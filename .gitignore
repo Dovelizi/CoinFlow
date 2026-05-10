@@ -1,0 +1,58 @@
+# ====== Xcode / SwiftPM build artifacts ======
+**/build/
+**/DerivedData/
+**/*.xcuserstate
+**/xcuserdata/
+**/*.xcworkspace/xcuserdata/
+**/.swiftpm/
+**/Package.resolved
+
+# ====== Real secrets — never commit ======
+# CoinFlow 真实配置（API key 等）。仅 Config.example.plist 可进仓库。
+**/Config/Config.plist
+**/Resources/GoogleService-Info.plist
+# 密钥填写指南容易被手滑贴上真 key，双保险屏蔽
+**/API_KEYS.md
+
+# 常见密钥/凭据文件类型
+*.mobileprovision
+*.p12
+*.pem
+*.key
+*.cer
+*.pfx
+.env
+.env.*
+!.env.example
+# 本地私人备份（如 Config.plist 自行复制的 backup）
+*.local
+*.local.bak
+*.secret
+*.secret.*
+
+# ====== 系统 / 编辑器 ======
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.iml
+
+# ====== 日志 / 临时产物 ======
+*.log
+*.pid
+*.pcm
+*.tmp
+.nyc_output/
+coverage/
+
+# ====== 其它 ======
+# 设计稿预览工程（独立，仅用于截屏设计稿，不随主工程提交）
+CoinFlowPreview/
+
+# CodeBuddy IDE 会话数据：团队 agent 的 inbox/config 属于个人工作状态，不进 git；
+# 保留 plans/ 和 rules/（项目级规则对团队有价值）
+.codebuddy/teams/

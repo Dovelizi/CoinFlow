@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- ========== LLM 选型（Text / Vision 独立） ========== -->
+    <!-- Text：多笔解析用；Vision：OCR 档 3 用 -->
+    <key>LLM_Text_Provider</key>
+    <string>stub</string>
+    <key>LLM_Vision_Provider</key>
+    <string>stub</string>
+
+    <!-- DeepSeek：https://platform.deepseek.com/api_keys -->
+    <key>DeepSeek_API_Key</key>
+    <string></string>
+    <key>DeepSeek_BaseURL</key>
+    <string>https://api.deepseek.com/v1</string>
+    <key>DeepSeek_Model</key>
+    <string>deepseek-v4-flash</string>
+
+    <key>OpenAI_API_Key</key>
+    <string></string>
+    <key>OpenAI_BaseURL</key>
+    <string>https://api.openai.com/v1</string>
+    <key>OpenAI_Model</key>
+    <string>gpt-4o-mini</string>
+
+    <key>Doubao_API_Key</key>
+    <string></string>
+    <key>Doubao_BaseURL</key>
+    <string>https://ark.cn-beijing.volces.com/api/v3</string>
+    <key>Doubao_Endpoint_ID</key>
+    <string></string>
+    <key>Doubao_Vision_Endpoint_ID</key>
+    <string></string>
+
+    <key>Qwen_API_Key</key>
+    <string></string>
+    <key>Qwen_BaseURL</key>
+    <string>https://dashscope.aliyuncs.com/compatible-mode/v1</string>
+    <key>Qwen_Model</key>
+    <string>qwen-turbo</string>
+    <key>Qwen_Vision_Model</key>
+    <string>qwen-vl-plus</string>
+
+    <!-- ========== 飞书多维表格（M9 取代 Firebase） ========== -->
+    <!-- 自建应用：https://open.feishu.cn/app -->
+    <!-- 必须勾选权限：bitable:app + wiki:wiki:readonly -->
+    <key>Feishu_App_ID</key>
+    <string></string>
+    <key>Feishu_App_Secret</key>
+    <string></string>
+
+    <!-- Wiki 模式（推荐）：把多维表格放在 Wiki 空间下，App 不再自动建表
+         Feishu_Wiki_Node_Token：Wiki URL /wiki/<这段>
+         Feishu_Bills_Table_Id：表格 URL ?table=<这段>
+         两个都留空 = fallback 到"App 自动在我的空间建表"旧模式 -->
+    <key>Feishu_Wiki_Node_Token</key>
+    <string></string>
+    <key>Feishu_Bills_Table_Id</key>
+    <string></string>
+
+    <!-- 自动建表模式 fallback：创建位置；空字符串 = "我的空间"根目录 -->
+    <key>Feishu_Folder_Token</key>
+    <string></string>
+
+    <!-- 自动给指定用户添加表的协作者权限（永久有效，不是 access_token）。
+         拿 open_id：用 user_access_token 调 /open-apis/authen/v1/user_info 即可 -->
+    <key>Feishu_Owner_Open_ID</key>
+    <string></string>
+</dict>
+</plist>
