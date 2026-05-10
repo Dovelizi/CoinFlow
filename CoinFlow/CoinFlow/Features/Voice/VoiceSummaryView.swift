@@ -163,15 +163,13 @@ struct VoiceSummaryView: View {
 
     private func amountText(_ bill: ParsedBill) -> String {
         guard let a = bill.amount else { return "—" }
-        let prefix: String = bill.direction == .income ? "+¥" : "-¥"
-        return prefix + AmountFormatter.display(a)
+        return "¥" + AmountFormatter.display(a)
     }
 
     private func amountColor(_ bill: ParsedBill, kind: RowKind) -> Color {
         if kind == .skipped { return Color.inkTertiary }
-        return bill.direction == .income
-            ? Color(hex: "#448361")
-            : Color(hex: "#D44C47")
+        guard let d = bill.direction else { return Color.inkTertiary }
+        return MainActor.assumeIsolated { AmountTintStore.shared.color(for: d) }
     }
 
     // MARK: - Bottom

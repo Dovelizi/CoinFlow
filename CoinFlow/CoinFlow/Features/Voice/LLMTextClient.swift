@@ -25,7 +25,10 @@ enum LLMTextError: Error, LocalizedError {
         case .notConfigured(let p):       return "\(p) 未配置 API Key"
         case .httpError(let s, let b):    return "LLM HTTP \(s)：\(b.prefix(200))"
         case .invalidResponse(let s):     return "LLM 响应格式异常：\(s.prefix(200))"
-        case .jsonDecodeFailed(_, let e): return "LLM JSON 解析失败：\(e.localizedDescription)"
+        case .jsonDecodeFailed(let raw, let e):
+            // 把原始响应前 200 字带到用户面文案，方便在不查日志时也能定位问题
+            let snippet = raw.prefix(200).trimmingCharacters(in: .whitespacesAndNewlines)
+            return "LLM JSON 解析失败：\(e.localizedDescription)\n响应片段：\(snippet)"
         case .timeout:                    return "LLM 请求超时"
         case .networkFailure(let e):      return "LLM 网络失败：\(e.localizedDescription)"
         case .rateLimited:                return "LLM 请求被限流，请稍后再试"

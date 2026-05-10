@@ -296,18 +296,15 @@ struct VoiceWizardStepView: View {
 
     private var directionColor: Color {
         switch vm.currentBill.direction {
-        case .income:  return Color.statusSuccess
-        case .expense: return Color.statusError
+        case .income:  return Color.incomeGreen
+        case .expense: return Color.expenseRed
         case nil:      return Color.inkTertiary
         }
     }
 
     private var directionSymbol: String {
-        switch vm.currentBill.direction {
-        case .income:  return "+¥"
-        case .expense: return "-¥"
-        case nil:      return "¥"
-        }
+        // 方向已由独立的 directionSection segmented 表达，金额前不再加 +/-
+        return "¥"
     }
 
     // MARK: - Direction

@@ -19,6 +19,7 @@ struct SettingsView: View {
     }
 
     @EnvironmentObject private var appState: AppState
+    @EnvironmentObject private var amountTint: AmountTintStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
@@ -40,10 +41,12 @@ struct SettingsView: View {
     @State private var voiceFieldsExpanded: Bool = false
     @State private var showBackTapDoc = false
     @State private var showCategoryManager = false
+    @State private var showAppearancePage: Bool = false
     @State private var recordCount: Int = 0
     @State private var diagnosticsExpanded: Bool = false
     @State private var showSyncStatus: Bool = false
     @State private var showDataIO: Bool = false
+    @State private var showSummaryList: Bool = false
     @State private var privacyAmountMask: Bool = false
     /// 首次启动日期 → "加入 N 天"副标题
     @State private var joinedDaysText: String = ""
@@ -82,6 +85,12 @@ struct SettingsView: View {
         return "未配置同步"
     }
 
+    /// 设置页"账单总结"行右侧统计文案：本地总结条数；为 0 时显示"未生成"
+    private var summaryRightText: String? {
+        let count = (try? SQLiteBillsSummaryRepository.shared.listAll(includesDeleted: false).count) ?? 0
+        return count == 0 ? "未生成" : "\(count) 篇"
+    }
+
     private var avatarLetter: String {
         guard let first = displayName.first else { return "?" }
         return String(first).uppercased()
@@ -112,6 +121,12 @@ struct SettingsView: View {
         .navigationDestination(isPresented: $showDataIO) {
             DataImportExportView()
         }
+        .navigationDestination(isPresented: $showSummaryList) {
+            BillsSummaryListView()
+        }
+        .navigationDestination(isPresented: $showAppearancePage) {
+            AppearanceSettingsView()
+        }
     }
 
     @ViewBuilder
@@ -122,7 +137,7 @@ struct SettingsView: View {
                 VStack(spacing: NotionTheme.space6) {
                     Color.clear.frame(height: 0).tabBarScrollAnchor()
                     userHeaderCard
-                    appearanceSection
+                    appearanceEntrySection
                     accountSection
                     recordSection
                     syncDataSection
@@ -136,7 +151,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(spacing: NotionTheme.space6) {
                     userHeaderCard
-                    appearanceSection
+                    appearanceEntrySection
                     accountSection
                     recordSection
                     syncDataSection
@@ -227,72 +242,45 @@ struct SettingsView: View {
         return "\(leading) · \(joinedDaysText)"
     }
 
-    // MARK: - 外观段（两卡并排切换 · 对齐设计稿 09-settings/main-dark）
+    // MARK: - 外观入口（合并主题 + 金额颜色）
+    //
+    // 点击整行 push 到 AppearanceSettingsView；右侧值预览 "主题名 · 配色名"。
 
-    /// 主题切换：两个并排卡片（Liquid · 彩色 mesh / Dark Glass · 深炭灰）。
-    /// 点击触发带动画过渡的主题切换；选中态用 accent 描边高亮。
-    /// ⚠️ 仅 UI 样式切换，不影响任何业务逻辑。
-    private var appearanceSection: some View {
-        SettingsSection(title: "外观", icon: "paintpalette", wrapInCard: false) {
-            HStack(spacing: NotionTheme.space4) {
-                // 左：Dark Notion（实色扁平，对应主题开关 OFF / Notion 风）
-                appearanceCard(
-                    title: "Dark Notion",
-                    subtitle: "实色扁平",
-                    isSelected: !themeStore.isEnabled
-                ) {
-                    themeStore.setEnabled(false, animated: true)
+    private var appearanceEntrySection: some View {
+        SettingsSection(title: "外观", icon: "paintpalette") {
+            Button {
+                showAppearancePage = true
+            } label: {
+                HStack(spacing: NotionTheme.space5) {
+                    Image(systemName: "paintpalette")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(themedIcon)
+                        .frame(width: 24)
+                    Text("主题与颜色")
+                        .font(NotionFont.body())
+                        .foregroundStyle(themeStore.isEnabled ? Color.white : Color.inkPrimary)
+                    Spacer()
+                    Text(appearanceSummaryText)
+                        .font(NotionFont.small())
+                        .foregroundStyle(themedTertiary)
+                        .lineLimit(1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(themedTertiary)
                 }
-                // 右：Dark Liquid（深炭灰 LGA，对应主题开关 ON）
-                appearanceCard(
-                    title: "Dark Liquid",
-                    subtitle: "深炭灰",
-                    isSelected: themeStore.isEnabled
-                ) {
-                    themeStore.setEnabled(true, animated: true)
-                }
+                .padding(.horizontal, NotionTheme.space5)
+                .padding(.vertical, 14)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("主题与颜色，当前 \(appearanceSummaryText)")
         }
     }
 
-    @ViewBuilder
-    private func appearanceCard(title: String,
-                                subtitle: String,
-                                isSelected: Bool,
-                                action: @escaping () -> Void) -> some View {
-        // v5 一致性原则：两套主题切换时仅 fill 颜色变化，圆角/padding/字号/border 完全一致
-        let isLGA = themeStore.isEnabled
-        let radius: CGFloat = 14
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.custom("PingFangSC-Semibold", size: 17))
-                    .foregroundStyle(isLGA ? Color.white : Color.inkPrimary)
-                Text(subtitle)
-                    .font(NotionFont.small())
-                    .foregroundStyle(isLGA ? LGATheme.textSecondary : Color.inkSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, NotionTheme.space5)
-            .background(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(isLGA
-                          ? LGATheme.cardFill
-                          : (isSelected
-                             ? LGATheme.accentSelection.opacity(0.08)
-                             : Color.surfaceOverlay))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(
-                        isSelected ? LGATheme.accentSelection : Color.border,
-                        lineWidth: isSelected ? 1.0 : NotionTheme.borderWidth
-                    )
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(title) 主题\(isSelected ? "，已选中" : "")")
+    /// 右侧值预览："Dark Notion · 系统"
+    private var appearanceSummaryText: String {
+        let themeName = themeStore.isEnabled ? "Dark Liquid" : "Dark Notion"
+        return "\(themeName) · \(amountTint.palette.displayName)"
     }
 
     // MARK: - 账户段（M9 仅保留 Face ID）
@@ -608,6 +596,15 @@ struct SettingsView: View {
                     accessibilityHint: "导出 CSV / JSON，或从其他 App 导入"
                 ) {
                     showDataIO = true
+                }
+                rowDivider
+                navRow(
+                    icon: "sparkles",
+                    title: "账单总结",
+                    rightText: summaryRightText,
+                    accessibilityHint: "查看 LLM 生成的周/月/年情绪化复盘"
+                ) {
+                    showSummaryList = true
                 }
             }
         }

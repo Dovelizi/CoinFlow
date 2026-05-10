@@ -44,6 +44,9 @@ struct HomeMainView: View {
     @State private var showPhotosPicker = false
     /// 拍照记账：UIImagePickerController camera sheet
     @State private var showCamera = false
+    /// M10-Fix4 · 被 banner 唤出的浮窗（仅 HomeMainView 局部 state 即可，
+    /// 因为浮窗只在用户点击 banner 时即时弹出；推送源数据在 AppState.pendingSummaryPush）
+    @State private var summaryFloating: BillsSummary?
 
     var body: some View {
         NavigationStack {
@@ -139,6 +142,43 @@ struct HomeMainView: View {
                 )
             }
         }
+        // M10-Fix4 · 首页推送 banner
+        // 数据源：AppState.pendingSummaryPush（跨 tab 保活）
+        // 关闭策略由 BillsSummaryPushBanner 内部承载：✕ / 点击 3 次 / 10 分钟超时
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Group {
+                if let s = appState.pendingSummaryPush {
+                    BillsSummaryPushBanner(
+                        push: BillsSummaryPush(s),
+                        onTap: {
+                            // 仅唤出浮窗，不清 pendingSummaryPush；
+                            // banner 是否消失由其内部"3 次 / 10min / ✕"策略决定
+                            summaryFloating = s
+                        },
+                        onDismiss: {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                appState.pendingSummaryPush = nil
+                            }
+                        }
+                    )
+                    .id(s.id)   // 新 push 触发 view 重建 + 重置计时
+                }
+            }
+            .animation(.easeInOut(duration: 0.25), value: appState.pendingSummaryPush?.id)
+        }
+        // 浮窗 overlay：由 banner 点击触发；关闭时清 state
+        .overlay {
+            if let s = summaryFloating {
+                SummaryFloatingCard(summary: s) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        summaryFloating = nil
+                    }
+                }
+                .zIndex(60)
+                .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: summaryFloating?.id)
     }
 
     // MARK: - Brand hero
@@ -179,7 +219,7 @@ struct HomeMainView: View {
                         .foregroundStyle(Color.inkSecondary)
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text(vm.monthlyNet > 0 ? "+¥" : "-¥")
+                        Text("¥")
                             .font(.system(size: 32, weight: .semibold, design: .rounded))
                             .foregroundStyle(netColor)
                         Text(AmountFormatter.display(vm.monthlyNet < 0 ? -vm.monthlyNet : vm.monthlyNet))
@@ -498,8 +538,7 @@ struct HomeMainView: View {
     }
 
     private func amountText(_ record: Record, kind: CategoryKind) -> String {
-        let prefix = kind == .income ? "+¥" : "-¥"
-        return prefix + AmountFormatter.display(record.amount)
+        "¥" + AmountFormatter.display(record.amount)
     }
 
     private var emptyRecentHint: some View {

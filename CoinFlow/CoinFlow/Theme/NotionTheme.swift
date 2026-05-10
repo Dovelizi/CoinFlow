@@ -45,72 +45,75 @@ enum NotionTheme {
 
 extension Color {
     static var canvas_bg: Color {
-        Color(light: Color(red: 1.0000, green: 1.0000, blue: 1.0000),
+        Color.adaptive(light: Color(red: 1.0000, green: 1.0000, blue: 1.0000),
               dark:  Color(red: 0.0980, green: 0.0980, blue: 0.0980))
     }
     static var sidebar_bg: Color {
-        Color(light: Color(red: 0.9843, green: 0.9804, blue: 0.9725),
+        Color.adaptive(light: Color(red: 0.9843, green: 0.9804, blue: 0.9725),
               dark:  Color(red: 0.1255, green: 0.1255, blue: 0.1255))
     }
     static var surface_overlay: Color {
-        Color(light: Color(red: 1.0000, green: 1.0000, blue: 1.0000),
+        Color.adaptive(light: Color(red: 1.0000, green: 1.0000, blue: 1.0000),
               dark:  Color(red: 0.1451, green: 0.1451, blue: 0.1451))
     }
     static var text_primary: Color {
-        Color(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(1.0),
+        Color.adaptive(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(1.0),
               dark:  Color(red: 1.0000, green: 1.0000, blue: 1.0000).opacity(0.81))
     }
     static var text_secondary: Color {
-        Color(light: Color(red: 0.4706, green: 0.4667, blue: 0.4549).opacity(1.0),
+        Color.adaptive(light: Color(red: 0.4706, green: 0.4667, blue: 0.4549).opacity(1.0),
               dark:  Color(red: 1.0000, green: 1.0000, blue: 1.0000).opacity(0.46))
     }
     static var text_tertiary: Color {
-        Color(light: Color(red: 0.6078, green: 0.6039, blue: 0.5922).opacity(1.0),
+        Color.adaptive(light: Color(red: 0.6078, green: 0.6039, blue: 0.5922).opacity(1.0),
               dark:  Color(red: 1.0000, green: 1.0000, blue: 1.0000).opacity(0.28))
     }
     static var text_disabled: Color {
-        Color(light: Color(red: 0.8275, green: 0.8196, blue: 0.7961).opacity(1.0),
+        Color.adaptive(light: Color(red: 0.8275, green: 0.8196, blue: 0.7961).opacity(1.0),
               dark:  Color(red: 1.0000, green: 1.0000, blue: 1.0000).opacity(0.16))
     }
     static var divider: Color {
-        Color(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(0.09),
+        Color.adaptive(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(0.09),
               dark:  Color(red: 1.0000, green: 1.0000, blue: 1.0000).opacity(0.094))
     }
     static var border: Color {
-        Color(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(0.16),
+        Color.adaptive(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(0.16),
               dark:  Color(red: 1.0000, green: 1.0000, blue: 1.0000).opacity(0.13))
     }
     static var hover_bg: Color {
-        Color(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(0.03),
+        Color.adaptive(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(0.03),
               dark:  Color(red: 1.0000, green: 1.0000, blue: 1.0000).opacity(0.055))
     }
     static var hover_bg_strong: Color {
-        Color(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(0.06),
+        Color.adaptive(light: Color(red: 0.2157, green: 0.2078, blue: 0.1843).opacity(0.06),
               dark:  Color(red: 1.0000, green: 1.0000, blue: 1.0000).opacity(0.09))
     }
     static var selected_bg: Color {
-        Color(light: Color(red: 0.1373, green: 0.5137, blue: 0.8863).opacity(0.14),
+        Color.adaptive(light: Color(red: 0.1373, green: 0.5137, blue: 0.8863).opacity(0.14),
               dark:  Color(red: 0.1373, green: 0.5137, blue: 0.8863).opacity(0.24))
     }
     static var accent_blue: Color {
-        Color(light: Color(red: 0.1373, green: 0.5137, blue: 0.8863),
+        Color.adaptive(light: Color(red: 0.1373, green: 0.5137, blue: 0.8863),
               dark:  Color(red: 0.3216, green: 0.6118, blue: 0.7922))
     }
     static var accent_blue_bg: Color {
-        Color(light: Color(red: 0.1373, green: 0.5137, blue: 0.8863).opacity(0.14),
+        Color.adaptive(light: Color(red: 0.1373, green: 0.5137, blue: 0.8863).opacity(0.14),
               dark:  Color(red: 0.3216, green: 0.6118, blue: 0.7922).opacity(0.2))
     }
     static var text_code: Color {
-        Color(light: Color(red: 0.9216, green: 0.3412, blue: 0.3412),
+        Color.adaptive(light: Color(red: 0.9216, green: 0.3412, blue: 0.3412),
               dark:  Color(red: 1.0000, green: 0.4510, blue: 0.4118))
     }
     static var bg_code_inline: Color {
-        Color(light: Color(red: 0.5294, green: 0.5137, blue: 0.4706).opacity(0.15),
+        Color.adaptive(light: Color(red: 0.5294, green: 0.5137, blue: 0.4706).opacity(0.15),
               dark:  Color(red: 1.0000, green: 1.0000, blue: 1.0000).opacity(0.08))
     }
 
-    init(light: Color, dark: Color) {
-        self = Color(uiColor: UIColor { trait in
+    /// M10-Fix3：重命名为 `adaptive(light:dark:)` 静态工厂方法，避免与 swift-markdown-ui
+    /// 2.4.1 内部导出的 `Color.init(light:dark:)` 产生命名歧义（编译报 ambiguous use）。
+    /// 调用方从 `Color.adaptive(light: ..., dark: ...)` 迁移为 `Color.adaptive(light: ..., dark: ...)`。
+    static func adaptive(light: Color, dark: Color) -> Color {
+        Color(uiColor: UIColor { trait in
             trait.userInterfaceStyle == .dark ? UIColor(dark) : UIColor(light)
         })
     }

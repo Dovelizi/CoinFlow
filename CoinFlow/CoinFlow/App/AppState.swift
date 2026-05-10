@@ -56,6 +56,37 @@ final class AppState: ObservableObject {
     @Published var feishu: FeishuState = .pending
     @Published var data: DataSnapshot = DataSnapshot()
 
+    /// M10-Fix4 · 待展示的总结推送 banner（首页订阅）。
+    /// service.generate 成功后会广播 .billsSummaryDidGenerate；首页 banner 用此 state 显示。
+    /// 提到 AppState 而非 HomeMainView 内部 @State 的原因：
+    /// HomeMainView 切 tab 时会被销毁（MainTabView 用条件渲染），HomeMainView 的 @State
+    /// 不会保留；提到 AppState 后跨 tab 保活，banner 在切回首页时仍可显示。
+    @Published var pendingSummaryPush: BillsSummary?
+
+    /// 通知订阅 token；deinit 时取消防泄漏
+    private var summaryGenerateObserver: NSObjectProtocol?
+
+    init() {
+        // M10-Fix4 · 在 AppState 生命周期内长驻订阅"账单总结已生成"
+        // service 在生成成功后通过 NotificationCenter 广播；
+        // 此处接收并写入 pendingSummaryPush，HomeMainView 通过 EnvironmentObject 监听显示 banner。
+        summaryGenerateObserver = NotificationCenter.default.addObserver(
+            forName: .billsSummaryDidGenerate,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let s = note.userInfo?["summary"] as? BillsSummary else { return }
+            // 在主 actor 上更新（addObserver 队列 = .main 已保证）
+            self?.pendingSummaryPush = s
+        }
+    }
+
+    deinit {
+        if let token = summaryGenerateObserver {
+            NotificationCenter.default.removeObserver(token)
+        }
+    }
+
     /// M6: 生物识别锁定状态。true = 显示锁屏页拦截 UI；false = 已解锁（或未启用）
     /// 启动即同步设初值：走 UserDefaults 镜像（DB bootstrap 前就要生效）
     @Published var bioLocked: Bool = UserDefaults.standard.bool(forKey: "security.biometric_enabled_mirror")

@@ -81,6 +81,30 @@ enum FeishuFieldName {
     static let channel     = "渠道"
 }
 
+/// M10-Fix2 · 飞书"账单总结"表（独立于账单表）字段名常量。
+/// 所有字段都是用户可直接在飞书表里阅读的中文名。
+enum FeishuSummaryFieldName {
+    /// 主键列（Text）：周期标签 "2026-W19" / "2026-05" / "2026"
+    static let periodLabel = "周期标签"
+    /// 总结业务主键（UUID = bills_summary.id），独立 Text 列用于去重
+    static let summaryId   = "总结ID"
+    /// 单选：周报 / 月报 / 年报
+    static let periodKind  = "周期类型"
+    static let startDate   = "起始日期"
+    static let endDate     = "结束日期"
+    static let totalIncome  = "总收入"
+    static let totalExpense = "总支出"
+    static let recordCount  = "笔数"
+    /// LLM 一句话核心洞察
+    static let digest       = "一句话洞察"
+    /// 完整结构化内容（LLM 原始 markdown 输出，用户在飞书里可直接阅读）
+    static let fullJSON     = "完整总结"
+    /// LLM provider 名（modelscope/deepseek/...）
+    static let llmProvider  = "LLM模型"
+    /// 生成时间
+    static let generatedAt  = "生成时间"
+}
+
 /// 远端搜索回来的行（带 record_id），用于手动拉取重建本地。
 struct FeishuRemoteRow {
     let recordId: String         // 飞书 record_id
@@ -615,5 +639,198 @@ actor FeishuBitableClient {
         }
         if let data = obj["data"] as? [String: Any] { return data }
         return [:]
+    }
+
+    // MARK: - M10-Fix2 · Summary Bitable（账单总结独立表）
+
+    /// 防并发同时建多张总结表
+    private var summaryBootstrapTask: Task<Void, Error>?
+    /// 本次进程是否已经给总结表加过 owner 协作权限
+    private var summaryOwnerGrantedThisSession = false
+    /// 本次进程是否已经补过总结表字段
+    private var summaryFieldsEnsuredThisSession = false
+
+    /// 保证总结多维表格存在；不存在则在"我的空间"建一张「CoinFlow 账单总结」表 + 12 字段。幂等。
+    func ensureSummaryBitableExists() async throws {
+        if FeishuConfig.hasSummaryBitable {
+            if let appToken = FeishuConfig.summaryAppToken,
+               let tableId = FeishuConfig.summaryTableId {
+                if !summaryOwnerGrantedThisSession {
+                    summaryOwnerGrantedThisSession = true
+                    await grantOwnerPermissionIfNeeded(appToken: appToken)
+                }
+                if !summaryFieldsEnsuredThisSession {
+                    summaryFieldsEnsuredThisSession = true
+                    try? await ensureSummaryFieldsComplete(appToken: appToken, tableId: tableId)
+                }
+            }
+            return
+        }
+        guard FeishuConfig.isConfigured else {
+            throw FeishuBitableError.notConfigured
+        }
+        if let task = summaryBootstrapTask {
+            try await task.value
+            return
+        }
+        let task = Task<Void, Error> { try await self.doSummaryBootstrap() }
+        summaryBootstrapTask = task
+        defer { summaryBootstrapTask = nil }
+        try await task.value
+        summaryOwnerGrantedThisSession = true
+        summaryFieldsEnsuredThisSession = true
+    }
+
+    private func doSummaryBootstrap() async throws {
+        if FeishuConfig.hasSummaryBitable { return }
+
+        // Step 1: 创建多维表格 App
+        let appName = "CoinFlow 账单总结"
+        let folderToken = FeishuConfig.folderToken
+        var createBody: [String: Any] = ["name": appName]
+        if !folderToken.isEmpty {
+            createBody["folder_token"] = folderToken
+        }
+        let createResp: [String: Any] = try await callAPI(
+            method: "POST",
+            path: "/open-apis/bitable/v1/apps",
+            body: createBody
+        )
+        guard let appData = createResp["app"] as? [String: Any],
+              let appToken = appData["app_token"] as? String,
+              !appToken.isEmpty,
+              let tableId = appData["default_table_id"] as? String,
+              !tableId.isEmpty else {
+            throw FeishuBitableError.decodeFailed(
+                reason: "创建总结 App 未返回 app_token / default_table_id"
+            )
+        }
+        let bitableURL = (appData["url"] as? String) ?? ""
+
+        // Step 2: 主键改名 + 删非主键预置字段
+        try await normalizeSummaryPresetFields(appToken: appToken, tableId: tableId)
+
+        // Step 3: 补齐 12 个目标字段
+        try await ensureSummaryFieldsComplete(appToken: appToken, tableId: tableId)
+
+        // Step 4: 删预置空白行
+        await cleanupEmptyRows(appToken: appToken, tableId: tableId)
+
+        // Step 5: 加 owner 协作权限
+        await grantOwnerPermissionIfNeeded(appToken: appToken)
+
+        // Step 6: 持久化
+        FeishuConfig.summaryAppToken = appToken
+        FeishuConfig.summaryTableId = tableId
+        FeishuConfig.summaryBitableURL = bitableURL
+        SyncLogger.info(phase: "feishu.summary.bootstrap",
+                        "Summary bitable ready: app_token=\(appToken) table_id=\(tableId) url=\(bitableURL)")
+    }
+
+    /// 把飞书默认的"文本"主键改名为「周期标签」，删掉其它非主键预置字段。
+    private func normalizeSummaryPresetFields(appToken: String, tableId: String) async throws {
+        let listResp: [String: Any] = try await callAPI(
+            method: "GET",
+            path: "/open-apis/bitable/v1/apps/\(appToken)/tables/\(tableId)/fields",
+            body: nil
+        )
+        let existingItems = (listResp["items"] as? [[String: Any]]) ?? []
+        for item in existingItems {
+            guard let fieldId = item["field_id"] as? String else { continue }
+            let isPrimary = (item["is_primary"] as? Bool) ?? false
+            let name = (item["field_name"] as? String) ?? ""
+            if isPrimary {
+                if name != FeishuSummaryFieldName.periodLabel {
+                    _ = try? await callAPI(
+                        method: "PUT",
+                        path: "/open-apis/bitable/v1/apps/\(appToken)/tables/\(tableId)/fields/\(fieldId)",
+                        body: ["field_name": FeishuSummaryFieldName.periodLabel, "type": 1]
+                    ) as [String: Any]
+                }
+            } else {
+                _ = try? await callAPI(
+                    method: "DELETE",
+                    path: "/open-apis/bitable/v1/apps/\(appToken)/tables/\(tableId)/fields/\(fieldId)",
+                    body: nil
+                ) as [String: Any]
+            }
+        }
+    }
+
+    /// 总结表字段补齐：12 个字段（主键周期标签除外，由 normalize 阶段命名）。
+    /// type 1=文本 2=数字 3=单选 5=日期时间。
+    private func ensureSummaryFieldsComplete(appToken: String, tableId: String) async throws {
+        let listResp: [String: Any] = try await callAPI(
+            method: "GET",
+            path: "/open-apis/bitable/v1/apps/\(appToken)/tables/\(tableId)/fields",
+            body: nil
+        )
+        let existingItems = (listResp["items"] as? [[String: Any]]) ?? []
+        let existingNames: Set<String> = Set(
+            existingItems.compactMap { $0["field_name"] as? String }
+        )
+        let desiredFields: [[String: Any]] = [
+            ["field_name": FeishuSummaryFieldName.summaryId,    "type": 1],
+            ["field_name": FeishuSummaryFieldName.periodKind,   "type": 3,
+             "property": ["options": [["name": "周报"], ["name": "月报"], ["name": "年报"]]]],
+            ["field_name": FeishuSummaryFieldName.startDate,    "type": 5],
+            ["field_name": FeishuSummaryFieldName.endDate,      "type": 5],
+            ["field_name": FeishuSummaryFieldName.totalIncome,  "type": 2],
+            ["field_name": FeishuSummaryFieldName.totalExpense, "type": 2],
+            ["field_name": FeishuSummaryFieldName.recordCount,  "type": 2],
+            ["field_name": FeishuSummaryFieldName.digest,       "type": 1],
+            ["field_name": FeishuSummaryFieldName.fullJSON,     "type": 1],
+            ["field_name": FeishuSummaryFieldName.llmProvider,  "type": 1],
+            ["field_name": FeishuSummaryFieldName.generatedAt,  "type": 5]
+        ]
+        for def in desiredFields {
+            guard let name = def["field_name"] as? String,
+                  !existingNames.contains(name) else { continue }
+            do {
+                _ = try await callAPI(
+                    method: "POST",
+                    path: "/open-apis/bitable/v1/apps/\(appToken)/tables/\(tableId)/fields",
+                    body: def
+                ) as [String: Any]
+                SyncLogger.info(phase: "feishu.summary.bootstrap", "added field: \(name)")
+            } catch FeishuBitableError.apiError(let code, _, _) where code == 1254014 {
+                // 重名字段：忽略
+                continue
+            }
+        }
+    }
+
+    /// 创建一行总结。返回飞书 record_id。
+    func createSummaryRecord(fields: [String: Any]) async throws -> String {
+        try await ensureSummaryBitableExists()
+        guard let appToken = FeishuConfig.summaryAppToken,
+              let tableId = FeishuConfig.summaryTableId else {
+            throw FeishuBitableError.bitableNotInitialized
+        }
+        let resp: [String: Any] = try await callAPI(
+            method: "POST",
+            path: "/open-apis/bitable/v1/apps/\(appToken)/tables/\(tableId)/records",
+            body: ["fields": fields]
+        )
+        guard let recordObj = resp["record"] as? [String: Any],
+              let recordId = recordObj["record_id"] as? String,
+              !recordId.isEmpty else {
+            throw FeishuBitableError.decodeFailed(reason: "create summary record 未返回 record_id")
+        }
+        return recordId
+    }
+
+    /// 按 record_id 更新总结行字段。
+    func updateSummaryRecord(recordId: String, fields: [String: Any]) async throws {
+        try await ensureSummaryBitableExists()
+        guard let appToken = FeishuConfig.summaryAppToken,
+              let tableId = FeishuConfig.summaryTableId else {
+            throw FeishuBitableError.bitableNotInitialized
+        }
+        _ = try await callAPI(
+            method: "PUT",
+            path: "/open-apis/bitable/v1/apps/\(appToken)/tables/\(tableId)/records/\(recordId)",
+            body: ["fields": fields]
+        ) as [String: Any]
     }
 }

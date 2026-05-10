@@ -297,14 +297,10 @@ struct AddCategorySheet: View {
 
     @State private var name: String = ""
     @State private var selectedKind: CategoryKind = .expense
-    @State private var selectedIcon: String = "tag.fill"
+    @State private var selectedIcon: String = CategoryIconLibrary.defaultIconName
     @State private var selectedColor: String = "#6B95D0"
     @FocusState private var nameFocused: Bool
 
-    private let iconCandidates = [
-        "tag.fill", "fork.knife", "car.fill", "bag.fill",
-        "gamecontroller.fill", "house.fill"
-    ]
     private let colorCandidates = [
         "#9B9A97", "#A98A6A", "#D9730D", "#CA9849",
         "#448361", "#6B95D0", "#7C5BC2", "#C14C8A", "#D44C47"
@@ -327,6 +323,7 @@ struct AddCategorySheet: View {
             }
         }
         .background(Color.appSheetCanvas.ignoresSafeArea())
+        .keyboardDoneToolbar()
     }
 
     private var header: some View {
@@ -439,31 +436,8 @@ struct AddCategorySheet: View {
             Text("图标")
                 .font(NotionFont.micro())
                 .foregroundStyle(Color.inkTertiary)
-            HStack(spacing: NotionTheme.space3) {
-                ForEach(iconCandidates, id: \.self) { ic in
-                    Button { selectedIcon = ic } label: {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: NotionTheme.radiusMD)
-                                .fill(selectedIcon == ic
-                                      ? Color(hex: selectedColor).opacity(0.18)
-                                      : Color.hoverBg.opacity(0.5))
-                            Image(systemName: ic)
-                                .font(.system(size: 16))
-                                .foregroundStyle(selectedIcon == ic
-                                                 ? Color(hex: selectedColor)
-                                                 : Color.inkSecondary)
-                        }
-                        .frame(width: 44, height: 44)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: NotionTheme.radiusMD)
-                                .stroke(selectedIcon == ic ? Color(hex: selectedColor) : Color.clear,
-                                        lineWidth: 1.5)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("图标 \(ic)")
-                }
-            }
+            IconPickerView(selected: $selectedIcon, tintColorHex: selectedColor)
+                .frame(height: 360)   // 固定高度避免 sheet 内 ScrollView 嵌套抖动
         }
     }
 

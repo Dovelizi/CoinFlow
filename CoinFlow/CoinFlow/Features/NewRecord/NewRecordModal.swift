@@ -121,7 +121,7 @@ struct NewRecordModal: View {
             ZStack(alignment: .center) {
                 HStack(alignment: .firstTextBaseline, spacing: NotionTheme.space2) {
                     Spacer(minLength: 0)
-                    Text(vm.direction == .expense ? "-¥" : "+¥")
+                    Text("¥")
                         .font(NotionFont.amountBold(size: 28))
                         .foregroundStyle(DirectionColor.amountForeground(kind: vm.direction))
                     if vm.amountText.isEmpty {

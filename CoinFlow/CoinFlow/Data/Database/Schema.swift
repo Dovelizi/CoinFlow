@@ -135,6 +135,53 @@ enum Schema {
         ON voice_session(status, started_at DESC);
     """
 
+    // MARK: - v4 bills_summary（M10 LLM 周/月/年总结）
+
+    /// 周/月/年 LLM 情绪化总结归档。
+    /// - period_kind：week / month / year
+    /// - period_start/end：UTC 秒（与 record.occurred_at 同语义），周/月/年起止
+    /// - snapshot_json：喂给 LLM 的统计快照（用于"重新生成"）
+    /// - summary_text：LLM 返回的完整 markdown
+    /// - summary_digest：从 summary_text 抽出的 ≤30 字核心洞察（喂给历史对比）
+    /// - feishu_doc_token / feishu_doc_url：飞书文档 token 与可访问 URL
+    /// - feishu_sync_status：pending / synced / failed
+    static let createBillsSummary = """
+    CREATE TABLE IF NOT EXISTS bills_summary (
+        id                  TEXT PRIMARY KEY,
+        period_kind         TEXT NOT NULL,
+        period_start        INTEGER NOT NULL,
+        period_end          INTEGER NOT NULL,
+        total_expense       TEXT NOT NULL,
+        total_income        TEXT NOT NULL,
+        record_count        INTEGER NOT NULL DEFAULT 0,
+        snapshot_json       TEXT NOT NULL,
+        summary_text        TEXT NOT NULL,
+        summary_digest      TEXT NOT NULL DEFAULT '',
+        llm_provider        TEXT NOT NULL,
+        feishu_doc_token    TEXT,
+        feishu_doc_url      TEXT,
+        feishu_sync_status  TEXT NOT NULL DEFAULT 'pending',
+        feishu_last_error   TEXT,
+        created_at          INTEGER NOT NULL,
+        updated_at          INTEGER NOT NULL,
+        deleted_at          INTEGER
+    );
+    """
+
+    /// 唯一索引：同 kind + 同周期起点全局唯一（含软删行）。
+    ///
+    /// **不使用 partial index**（去掉 `WHERE deleted_at IS NULL`）：
+    /// SQLite 的 `ON CONFLICT(...) DO UPDATE` 子句要求目标必须匹配**完整**的
+    /// 唯一约束，partial unique index 不被识别 → 抛 "ON CONFLICT clause does not
+    /// match any PRIMARY KEY or UNIQUE constraint"。
+    ///
+    /// 语义：用户软删 summary 后再次生成同周期总结时，upsert 会**复活同行**
+    /// （把 `deleted_at` 重置为 NULL），不再产生孤儿堆积。
+    static let createBillsSummaryUniqIndex = """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_bills_summary_period
+        ON bills_summary(period_kind, period_start);
+    """
+
     // MARK: - 聚合：v1 全部建表 + 索引语句
 
     /// 按依赖顺序排列：voice_session 必须先于 record（record 引用其 id）。
@@ -153,6 +200,7 @@ enum Schema {
     /// 表名（按建表顺序，便于 `Schema.tableNames.count` 在启动页展示数量）。
     static let tableNames: [String] = [
         "ledger", "category", "voice_session",
-        "record", "quota_usage", "user_settings"
+        "record", "quota_usage", "user_settings",
+        "bills_summary"
     ]
 }

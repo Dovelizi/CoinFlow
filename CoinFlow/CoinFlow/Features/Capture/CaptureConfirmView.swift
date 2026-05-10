@@ -493,13 +493,25 @@ struct CaptureConfirmView: View {
             // M7-Fix17：HStack 整体居中；-¥ / +¥ 小字 + 金额大字自然并排，不强制中央拉伸
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
-                // 方向符号（可点击切换收入/支出）
+                // 方向胶囊（可点击切换收入/支出）+ 金额前 ¥
+                // 不再用 +¥/-¥，方向通过胶囊文案 + 颜色表达，与列表/统计页规范一致
                 Button {
                     vm.setDirection(vm.direction == .expense ? .income : .expense)
                 } label: {
-                    Text(vm.direction == .expense ? "-¥" : "+¥")
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        .foregroundStyle(amountValidation == .error ? Color.dangerRed : directionColor)
+                    HStack(spacing: 6) {
+                        Text(vm.direction == .expense ? "支出" : "收入")
+                            .font(.custom("PingFangSC-Semibold", size: 11))
+                            .foregroundStyle(amountValidation == .error ? Color.dangerRed : directionColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(
+                                Capsule()
+                                    .fill((amountValidation == .error ? Color.dangerRed : directionColor).opacity(0.15))
+                            )
+                        Text("¥")
+                            .font(.system(size: 28, weight: .semibold, design: .rounded))
+                            .foregroundStyle(amountValidation == .error ? Color.dangerRed : directionColor)
+                    }
                 }
                 .buttonStyle(.plain)
 

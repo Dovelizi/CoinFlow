@@ -588,3 +588,131 @@ swift scripts/feishu_e2e.swift
 | §9 安全 | `CoinFlow/{Security,App/PrivacyShieldView,App/BiometricLockView}` |
 | §10 配置 | `CoinFlow/Config` |
 | §11 构建测试 | `CoinFlowTests/` + `scripts/gen_xcodeproj.py` |
+| §13 LLM 账单总结 | `CoinFlow/Features/Stats/Summary` + `CoinFlow/Data/Feishu/FeishuBitableClient.swift`（summary bitable 部分） + `CoinFlow/Data/Models/BillsSummary.swift` + `CoinFlow/Data/Repositories/BillsSummaryRepository.swift` + `CoinFlow/Resources/Prompts/BillsSummary.system.md` |
+---
+
+## 13. M10 · LLM 账单总结
+
+### 13.1 业务定位
+
+每个周期开始时（周一 / 月 1 / 年 1/1），App 主动给用户推送一份"上一周期"的账单情绪化复盘——内容是 LLM 基于本地账单聚合数据生成的 markdown，渲染成浮窗 + 首页 banner，归档到飞书"账单总结"独立 bitable 永久留存。
+
+不做：
+- 跨设备数据互通（沿用 M9 决策：飞书无客户端实时推送）
+- 用户编辑总结内容（generated content 不可改；如不满意可"重新生成"）
+- 多语言（仅中文 prompt，prompt 改语言走代码层）
+
+### 13.2 数据模型
+
+`bills_summary` 表（v4 引入 / v5 修索引），见 `CoinFlow/Data/Database/Schema.swift::createBillsSummary`：
+
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | TEXT PK | UUID |
+| `period_kind` | TEXT NOT NULL | "week" / "month" / "year" |
+| `period_start` / `period_end` | INTEGER NOT NULL | 毫秒 epoch；周期边界由 `BillsSummaryAggregator.periodBounds` 计算 |
+| `total_expense` / `total_income` | TEXT NOT NULL | Decimal 字符串（金额统一用 Decimal） |
+| `record_count` | INTEGER NOT NULL | 本周期内未删除的账单笔数 |
+| `snapshot_json` | TEXT NOT NULL | 喂给 LLM 的统计快照（重新生成时复用避免再扫表） |
+| `summary_text` | TEXT NOT NULL | LLM 返回的完整 markdown |
+| `summary_digest` | TEXT NOT NULL | ≤30 字核心洞察（用于喂下次 LLM 做对比） |
+| `llm_provider` | TEXT NOT NULL | "modelscope" / "deepseek" / ... |
+| `feishu_doc_token` / `feishu_doc_url` | TEXT | 飞书 bitable record_id + base URL |
+| `feishu_sync_status` | TEXT NOT NULL | `pending` / `synced` / `failed` / `skipped` |
+| `feishu_last_error` | TEXT | 飞书同步失败时的错误描述 |
+| `created_at` / `updated_at` / `deleted_at` | INTEGER | 时间戳；软删走 `deleted_at` |
+
+业务唯一键：`UNIQUE INDEX idx_bills_summary_period (period_kind, period_start)` —— v4 写成了 partial index（带 `WHERE deleted_at IS NULL`），SQLite `ON CONFLICT` 不能识别 partial → upsert 报错；v5 修复为完整 unique index（同时让 `BillsSummaryRepository.upsert` 在 `deleted_at IS NOT NULL` 命中时把 `deleted_at` 重置）。
+
+### 13.3 端到端时序
+
+```
+[用户主动 / Scheduler 触发]
+        └─ BillsSummaryService.generate(kind, force: false)
+             ├─ 0. inflight[kind] 已存在 → 复用同一个 Task（同 kind 串行化）
+             ├─ 1. 取最近 historyDigestCount=3 条历史 digest
+             ├─ 2. BillsSummaryAggregator.aggregate(kind, reference, history)
+             │     ↳ 周期边界 + 按 category/direction 聚合 + record_count
+             ├─ 3. 阈值检查（force=false）：周≥3 / 月≥5 / 年≥12，不达标抛 .noData
+             ├─ 4. BillsSummaryPromptBuilder.build → (system, user)
+             │     ↳ system prompt 从 Resources/Prompts/BillsSummary.system.md 加载
+             ├─ 5. BillsSummaryLLMClient.complete(system, user)
+             │     ↳ OpenAI 兼容 / temperature=0.8 / max_tokens=4000 / stream=false
+             │     ↳ content 为 null 时降级取 reasoning_content（modelscope Kimi-K2.5 兜底）
+             ├─ 6. stripMarkdownCodeFence + extractDigestFromMarkdown（≤30 字）
+             ├─ 7. SQLiteBillsSummaryRepository.upsert（按 kind+period_start 去重；保留旧 id 与 createdAt）
+             ├─ 8. NotificationCenter.post(.billsSummaryDidGenerate, userInfo:["summary":...]) on @MainActor
+             │     ↳ AppState init 内长驻 observer → @Published var pendingSummaryPush = summary
+             │     ↳ HomeMainView .safeAreaInset 监听 → BillsSummaryPushBanner 出现
+             └─ 9. Task.detached → BillsSummaryService.syncToFeishu(summaryId)
+                   ├─ FeishuConfig 未配置 → status = .skipped
+                   ├─ 已有 docToken → updateSummaryRecord
+                   │   └─ 1254043/1254004/1254001/1254002 → 清缓存降级 createSummaryRecord
+                   └─ 无 docToken → createSummaryRecord
+                       └─ 写回 doc_token + doc_url + status=.synced
+```
+
+### 13.4 关键文件
+
+| 文件 | 职责 |
+|---|---|
+| `Data/Models/BillsSummary.swift` | model + `BillsSummaryPeriodKind` + `FeishuSummaryStatus` enum |
+| `Data/Repositories/BillsSummaryRepository.swift` | upsert / find / listRecent / softDelete / updateFeishuSync |
+| `Data/Sync/SummaryBitableMapper.swift` | `BillsSummary ↔ [String: Any]` 双向；`encode` 抛 `SummaryBitableMapperError.invalidValue` |
+| `Data/Feishu/FeishuBitableClient.swift` | 新增 `ensureSummaryBitableExists / createSummaryRecord / updateSummaryRecord` + `FeishuSummaryFieldName` 字段名常量 |
+| `Data/Feishu/FeishuConfig.swift` | 新增 `summaryAppToken / summaryTableId / summaryBitableURL` 缓存 + `resetSummaryBitableCache` |
+| `Features/Stats/Summary/BillsSummaryService.swift` | actor 编排（generate / syncToFeishu / upsertToFeishu）+ 通知广播 |
+| `Features/Stats/Summary/BillsSummaryAggregator.swift` | 周期边界 + 聚合快照 + periodLabel("2026-W19" / "2026-05" / "2026") |
+| `Features/Stats/Summary/BillsSummaryPromptBuilder.swift` | system + user prompt 拼装 |
+| `Features/Stats/Summary/BillsSummaryLLMClient.swift` | OpenAI 兼容客户端；`content?` + `reasoning_content` 兜底 |
+| `Features/Stats/Summary/BillsSummaryScheduler.swift` | App active 时检查"周/月/年是否到了节点"；UserDefaults 节流 |
+| `Features/Stats/Summary/PromptResource.swift` | 加载 `Resources/Prompts/*.md` |
+| `Features/Stats/Summary/Views/BillsSummaryListView.swift` | 设置页入口 + 调试推送按钮 + 历史按 kind 分组 |
+| `Features/Stats/Summary/Views/SummaryFloatingCard.swift` | MarkdownUI 浮窗（自定义 Theme） |
+| `Features/Stats/Summary/Views/BillsSummaryPushBanner.swift` | 首页 banner（✕ / 点击 3 次 / 10 分钟超时） |
+
+### 13.5 Prompt 协议
+
+system prompt 全文见 `Resources/Prompts/BillsSummary.system.md`，要点：
+- 输出限定 markdown（标题 / 列表 / 表格 / emoji）
+- 必含 5 个段落：核心洞察一句话 / 数字面板 / 类别 TOP 3 / 情绪化故事 / 下一周期建议
+- 允许大量 emoji 自由发挥（避免每周复盘语气雷同）
+- 历史 3 条 digest 作为前置 context，让 LLM 能"对比上次"
+
+### 13.6 跨 tab 通信
+
+```
+用户在「设置 → 账单总结」点测试按钮
+        ↓
+service.generate (actor)
+        ↓
+upsert 落库
+        ↓
+NotificationCenter.post(.billsSummaryDidGenerate)  [@MainActor]
+        ↓
+AppState observer 收到 → @Published pendingSummaryPush = summary
+        ↓
+HomeMainView (EnvironmentObject) 监听 → safeAreaInset 出现 banner
+```
+
+为什么提到 `AppState` 而非 `HomeMainView` 内部 `@State`：`MainTabView` 用条件渲染切 tab 时会销毁子视图，`@State` 不保活；`AppState` 是单例 EnvironmentObject 跨 tab 保活。
+
+Banner 关闭策略（M10-Fix5）：
+- ✕ 按钮：1 次点击立即关
+- 正文点击：每次点都触发 `onTap`（弹浮窗）；累计第 3 次时同时调 `onDismiss`
+- 10 分钟自动关闭（`autoCloseTask = Task { sleep(600s); onDismiss() }`）
+- `tapCount` 与计时器都在 banner 内部 `@State`，新 push 进来时通过 `.id(summary.id)` 整体重建归零
+
+### 13.7 边界风险
+
+- **LLM 配额**：每次 ~2k tokens / 年报 ~4k；用户连点测试按钮可能爆配额（actor 仅串行化同 kind，跨 kind 不限）
+- **partial index 旧库残留**：v5 已 DROP 重建，冷启动一次即修复
+- **首次升级飞书 bitable 自动创建**：与账单表共用 App ID/Secret，不增加新权限；表创建后 owner 协作权限自动加（`ensureBitableOwnerPermission`）
+- **banner 内部状态不跨 tab 保活**：`tapCount` 与 10 min 计时在 `HomeMainView` 重建时归零；`pendingSummaryPush` 是保活的，所以重建后 banner 仍出现且重新计时——trade-off 接受
+
+### 13.8 测试
+
+- 单元测试 43/43 通过（M10 service 与 LLM 均为外部 IO，未加单测）
+- M10 主路径靠"设置 → 账单总结 → 调试推送 + 切到首页看 banner"手工冒烟覆盖
+- 飞书 bitable 写入靠 `BillsSummaryService.syncToFeishu` 路径覆盖（与 M9 账单 bitable 同构）
+

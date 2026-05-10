@@ -155,12 +155,12 @@ struct StatsTrendView: View {
             VStack(spacing: 0) {
                 let stats = computeInsights()
                 insightRow(icon: "arrow.up.circle.fill",
-                           iconColor: NotionColor.red.text(scheme),
+                           iconColor: DirectionColor.amountForeground(kind: .expense),
                            title: "支出峰值", detail: stats.peak)
                 Rectangle().fill(Color.divider).frame(height: 0.5)
                     .padding(.leading, NotionTheme.space5 + 24 + NotionTheme.space5)
                 insightRow(icon: "arrow.down.circle.fill",
-                           iconColor: NotionColor.green.text(scheme),
+                           iconColor: DirectionColor.amountForeground(kind: .income),
                            title: "支出谷值", detail: stats.valley)
                 Rectangle().fill(Color.divider).frame(height: 0.5)
                     .padding(.leading, NotionTheme.space5 + 24 + NotionTheme.space5)

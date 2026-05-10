@@ -37,6 +37,7 @@ SOURCE_FILES: list[str] = [
     "Theme/NotionTheme+Aliases.swift",
     "Theme/NotionFont.swift",
     "Theme/KeyboardDoneToolbar.swift",
+    "Theme/AmountTintStore.swift",
     "Config/AppConfig.swift",
     "Data/Database/Schema.swift",
     "Data/Database/Migrations.swift",
@@ -72,6 +73,8 @@ SOURCE_FILES: list[str] = [
     "Features/RecordDetail/RecordDetailViewModel.swift",
     "Features/RecordDetail/RecordDetailSheet.swift",
     "Features/Categories/CategoryListView.swift",
+    "Features/Categories/CategoryIconLibrary.swift",
+    "Features/Categories/IconPickerView.swift",
     # M4 — Capture / OCR
     "Features/Capture/OCREngine.swift",
     "Features/Capture/ReceiptParser.swift",
@@ -123,6 +126,9 @@ SOURCE_FILES: list[str] = [
     # M6-B — 云服务真接入
     "Features/Voice/LLMTextClient.swift",
     "Features/Voice/BillsPromptBuilder.swift",
+    # 拆分 Prompt：语音/OCR 各自独立模板，主入口仍是 BillsPromptBuilder
+    "Features/Voice/BillsVoicePromptBuilder.swift",
+    "Features/Voice/BillsOCRPromptBuilder.swift",
     # M7-Fix13 — 商户品牌图标识别
     "Features/Capture/MerchantBrand.swift",
     # M7 — 交互一致性修复（Onboarding / Sync / Data IO / Coordinator）
@@ -130,6 +136,7 @@ SOURCE_FILES: list[str] = [
     "Features/Onboarding/OnboardingView.swift",
     "Features/Sync/SyncStatusView.swift",
     "Features/Settings/DataImportExportView.swift",
+    "Features/Settings/AppearanceSettingsView.swift",
     # M9 — 飞书多维表格同步（取代 Firebase / E2EE）
     "Data/Feishu/FeishuConfig.swift",
     "Data/Feishu/FeishuTokenManager.swift",
@@ -148,6 +155,20 @@ SOURCE_FILES: list[str] = [
     "Features/Common/InteractivePopEnabler.swift",
     # Capture 相机选择器（原未注册）
     "Features/Capture/CameraPicker.swift",
+    # M10 — 账单总结（LLM 周/月/年情绪化复盘 + 飞书表同步）
+    "Data/Models/BillsSummary.swift",
+    "Data/Repositories/BillsSummaryRepository.swift",
+    # M10-Fix2 · 总结独立 bitable 表 mapper
+    "Data/Sync/SummaryBitableMapper.swift",
+    "Features/Stats/Summary/PromptResource.swift",
+    "Features/Stats/Summary/BillsSummaryAggregator.swift",
+    "Features/Stats/Summary/BillsSummaryPromptBuilder.swift",
+    "Features/Stats/Summary/BillsSummaryLLMClient.swift",
+    "Features/Stats/Summary/BillsSummaryService.swift",
+    "Features/Stats/Summary/BillsSummaryScheduler.swift",
+    "Features/Stats/Summary/Views/BillsSummaryListView.swift",
+    "Features/Stats/Summary/Views/SummaryFloatingCard.swift",
+    "Features/Stats/Summary/Views/BillsSummaryPushBanner.swift",
 ]
 
 # --------------------------------------------------------------------------
@@ -160,14 +181,22 @@ TEST_FILES: list[str] = [
     "CoinFlowTests/RecordRepositorySyncTests.swift",
     "CoinFlowTests/FeishuTokenManagerTests.swift",
     "CoinFlowTests/RecordBitableMapperTests.swift",
+    "CoinFlowTests/CategoryIconLibraryTests.swift",
 ]
 
 # --------------------------------------------------------------------------
 # Resource files (copied into the app bundle)
+# 支持 .plist 和 .md（M10 LLM Prompt 资源）
+# 子目录通过 SOURCE_ROOT 相对路径注册（避开 Xcode CopyPlistFile 的 group 路径解析坑）
 # --------------------------------------------------------------------------
 RESOURCE_FILES: list[str] = [
     "Config/Config.example.plist",
     "Config/Config.plist",
+    # M10 — LLM Prompt 资源（情绪化总结 system prompt）
+    "Resources/Prompts/BillsSummary.system.md",
+    # M11 — App 图标（folder.assetcatalog；ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon
+    # 在 build settings 已声明，编译时由 actool 处理整个 .xcassets bundle）
+    "Resources/Assets.xcassets",
 ]
 
 # --------------------------------------------------------------------------
@@ -190,6 +219,14 @@ SPM_PACKAGES: list[dict] = [
         # 文档 §11 要求的 SQLCipher 4.10.0+ 官方 SPM 包。
         # 提供 `sqlite3_*` 符号（已附 SQLITE_HAS_CODEC），本地 DatabaseManager
         # `import SQLCipher` 后可直接调用 `sqlite3_key(...)` 启用 256-bit AES 加密。
+    },
+    {
+        "repo":     "https://github.com/gonzalezreal/swift-markdown-ui",
+        "minVer":   "2.4.1",
+        "products": ["MarkdownUI"],
+        # M10-Fix3 · SwiftUI 原生 Markdown 渲染：GFM 全支持（表格/代码块/任务列表）
+        # iOS 15+；transitive 依赖 NetworkImage + swift-cmark 由 SPM 自动解析
+        # 库进维护模式但 2.4.1 版本稳定可用（3.8k stars，5 年迭代）
     },
 ]
 
@@ -356,12 +393,21 @@ def generate() -> str:
         name = Path(f).name
         # Xcode's CopyPlistFile builtin rule has a known quirk where relative
         # path resolution through nested groups drops ancestor segments; the
-        # safe fix is to pin each resource plist to SOURCE_ROOT with its full
-        # relative path.
+        # safe fix is to pin each resource (plist / markdown / etc.) to
+        # SOURCE_ROOT with its full relative path.
         rel_path = f"{PROJECT_NAME}/{f}"
+        # 按扩展名选择 lastKnownFileType；未识别扩展名走通用 text 兜底
+        ext = Path(f).suffix.lower()
+        file_type = {
+            ".plist":    "text.plist.xml",
+            ".md":       "net.daringfireball.markdown",
+            ".json":     "text.json",
+            ".txt":      "text",
+            ".xcassets": "folder.assetcatalog",
+        }.get(ext, "text")
         fr_lines.append(
             f"\t\t{file_refs[f]} /* {quote_if_needed(name)} */ = {{isa = PBXFileReference; "
-            f"lastKnownFileType = text.plist.xml; name = {quote_if_needed(name)}; "
+            f"lastKnownFileType = {file_type}; name = {quote_if_needed(name)}; "
             f"path = {quote_if_needed(rel_path)}; sourceTree = SOURCE_ROOT; }};"
         )
     # Test bundle product reference

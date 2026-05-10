@@ -4,8 +4,8 @@
 //  金额展示统一规则（§5.5.8 InlineStatsBar / §5.5.9 详情）：
 //  - 千分位
 //  - 去尾零（12500.00 → 12,500；38.50 → 38.5）
-//  - 默认无符号（"12,500"）
-//  - signed 模式带 `-¥` / `+¥`（详情/编辑 Sheet 用）
+//  - **不带方向符号**（全 App 统一去掉 +/-，方向只由颜色表达；
+//    旧 `signed(_:kind:)` 已废弃于 2026-05-10 用户反馈）
 
 import Foundation
 
@@ -19,16 +19,6 @@ enum AmountFormatter {
         f.maximumFractionDigits = 2
         f.usesGroupingSeparator = true
         return f.string(from: amount as NSDecimalNumber) ?? "0"
-    }
-
-    /// 带方向符号：支出「-¥38.5」，收入「+¥12,500」。
-    static func signed(_ amount: Decimal, kind: CategoryKind) -> String {
-        let prefix: String
-        switch kind {
-        case .expense: prefix = "-¥"
-        case .income:  prefix = "+¥"
-        }
-        return "\(prefix)\(display(amount))"
     }
 
     /// 计算总额：批量 record 的 expense / income 拆分小计。

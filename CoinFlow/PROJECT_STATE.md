@@ -23,6 +23,8 @@
 | M7 | 交互一致性修复 + Stats Hub | ✅ | ⬜ | ⬜ | 待验收 |
 | M8 | Firebase 同步加固 + 测试基础设施 | ✅ | ✅ | ✅ | **完成（已废弃于 M9）** |
 | M9 | **切换到飞书多维表格（取代 Firebase）** | ✅ | ⬜ | ⬜ | **待你验收** |
+| M10 | **LLM 账单总结（周/月/年情绪化复盘）+ 飞书 bitable 归档** | ✅ | ⬜ | ⬜ | **待你验收** |
+| M11 | **App 图标 + 视觉打磨（分类图标库 / 外观设置 / 金额染色）** | ✅ | ⬜ | ⬜ | **待你验收** |
 
 ## M3.3 / M4 关键决策留档（2026-05-08）
 
@@ -607,3 +609,107 @@ T6 拉取全表，找到测试行验证字段值    → ✓ 金额=199.99 已删
 4. **更新同步**：详情页改一条账单的金额 → 同步状态显示"已同步" → 飞书表格金额跟着变
 5. **软删同步**：列表滑删一条账单 → 飞书表格中"已删除"列变勾（行不消失）
 6. **手动拉取**：同步状态页 → "从飞书拉取" → 显示"新增 X 条"或"跳过 X 条"
+
+---
+
+## M10：LLM 账单总结（情绪化复盘 + 飞书 bitable 归档）
+
+> 用户在周一 / 月初 / 年初进入 App 时，自动看到上一周期的账单情绪化复盘（Markdown 浮窗 + 首页 banner），同时归档到飞书"账单总结"独立 bitable 永久留存。
+
+### 建设成果
+
+#### 数据层
+- **`bills_summary` 表**（v4 migration）：12 列承载一次复盘的全部状态
+  - 主键：`id`(UUID)；业务唯一键：`(period_kind, period_start) WHERE deleted_at IS NULL`
+  - 业务字段：`total_expense / total_income / record_count / snapshot_json / summary_text(markdown) / summary_digest(≤30 字)`
+  - 飞书同步元：`feishu_doc_token / feishu_doc_url / feishu_sync_status(.pending/.synced/.failed/.skipped) / feishu_last_error`
+- **v4 → v5 修复**（`Migrations.swift`）：原 v4 写的是 partial unique index `WHERE deleted_at IS NULL`，但 SQLite `ON CONFLICT` 不能识别 partial 索引导致 upsert 报 `does not match any PRIMARY KEY or UNIQUE constraint`；v5 DROP 重建为完整 unique index
+- **Migration 容错**：新增 `tolerateDuplicateColumn` 字段，开发期模拟器重装/状态污染下 ALTER TABLE ADD COLUMN 幂等可跳过
+
+#### 服务层（`Features/Stats/Summary/`）
+| 文件 | 职责 |
+|---|---|
+| `BillsSummaryService.swift` | actor 编排：聚合数据 → 拼 prompt → 调 LLM → 落本地 → 推飞书；同 kind 串行化避免重复 LLM 调用 |
+| `BillsSummaryAggregator.swift` | 周期边界（`Calendar.dateInterval(of: .weekOfYear)`）+ 周报/月报/年报统计快照（按 category/direction 聚合） |
+| `BillsSummaryPromptBuilder.swift` | system + user prompt 拼装；system 从 `Resources/Prompts/BillsSummary.system.md` 加载 |
+| `BillsSummaryLLMClient.swift` | OpenAI 兼容协议（modelscope Kimi-K2.5），`temperature=0.8 / max_tokens=4000 / stream=false`；`content?` 可空 + `reasoning_content` 兜底 |
+| `BillsSummaryScheduler.swift` | App active 触发：周一/月 1 / 年 1/1 各触发一次；UserDefaults 节流 `lastTriggerDate.{kind}` |
+| `PromptResource.swift` | 加载 `.md` prompt 资源（防止 Bundle 路径写死） |
+
+#### 飞书归档
+- **独立 bitable**（不复用账单表）：12 字段一一对应 `bills_summary` 列
+- **`FeishuBitableClient`** 新增：`ensureSummaryBitableExists / createSummaryRecord / updateSummaryRecord`
+- **`FeishuConfig`** 新增 `summaryAppToken / summaryTableId / summaryBitableURL` 缓存
+- **`SummaryBitableMapper`**：`BillsSummary ↔ [String: Any]` 双向映射
+- **远端失效自动重建**：捕获 1254043(RecordIdNotFound) / 1254004(TableNotFound) / 1254001-2(AppToken 失效) → 清缓存 + 降级 createRecord
+
+#### UI（`Features/Stats/Summary/Views/`）
+| 视图 | 入口 | 用途 |
+|---|---|---|
+| `BillsSummaryListView` | 设置 → 账单总结 | 测试按钮（周/月/年立即生成 / 调试推送）+ 历史按 kind 分组列表 |
+| `SummaryFloatingCard` | banner / 列表项点击 | MarkdownUI 浮窗（四边等距），自定义 Theme |
+| `BillsSummaryPushBanner` | 首页顶部（`safeAreaInset`） | 关闭策略：✕ / 点击 3 次 / 10 分钟超时（M10-Fix5） |
+
+#### 跨 tab 通信
+- **问题**：`MainTabView` 用条件渲染，切 tab 销毁 `HomeMainView`，banner 的 `@State` 无法保活
+- **方案**：将 `pendingSummaryPush` 提到 `AppState`（`@Published`）；service 完成后通过 `NotificationCenter.post(.billsSummaryDidGenerate, userInfo:["summary":...])` 广播；`AppState` init 内长驻订阅写入 published；`HomeMainView` 通过 `EnvironmentObject` 监听
+- **M10-Fix6 修复**：原本 service 只声明了 `Notification.Name.billsSummaryDidGenerate` 但**从未真的 post**（grep 0 结果），导致 banner 永远不显示 → service 中 upsert 后追加 `Task { @MainActor in NotificationCenter.default.post(...) }`
+
+### M10 关键决策
+- **LLM 输出 Markdown 而非 JSON**：早期试过结构化 JSON（part1/part2/...），但 LLM 在 `content` 为 null + `reasoning_content` 流式拼装下 JSON 解析常报"数据缺失"；改为直接 markdown 后稳定，且 swift-markdown-ui 渲染天然支持
+- **飞书用 bitable 而非文档**：用户决策。文档 scope 权限麻烦且 SDK 对自建应用支持差；bitable 与已有账单表统一，方便用户在飞书侧做"复盘 + 流水"联动统计
+- **prompt 自由度提升**：允许更多 emoji、随机选用，避免每周复盘语气雷同
+- **历史摘要喂给下次 LLM**：`historyDigestCount=3`，每次生成 prompt 时附上最近 3 个 digest，让 LLM 能感知"上周/上月你说过 X"，做对比
+
+### M10 边界风险
+- **LLM 配额**：每次生成 ~2k tokens，年报 ~4k；用户疯狂点测试按钮可能爆配额（service 内 actor 串行化已避免同 kind 并发，但跨 kind 不限）
+- **首次升级清不掉旧 partial index**：v5 已 DROP 重建；冷启动一次即修复
+- **飞书表初次自动创建权限**：bitable 需 `bitable:app` scope；与账单表共用同一 App ID/Secret 不会增加新权限
+- **banner 跨 tab 内部状态不保活**：`AppState.pendingSummaryPush` 跨 tab 保活，但 `tapCount`（10 分钟计时也是）在 `HomeMainView` 重建时归零；trade-off 接受
+
+### M10 验收清单
+1. 设置 → 账单总结 → 点"周报 / 月报 / 年报"任一按钮 → 8-15 秒后浮窗弹出
+2. 浮窗 markdown 渲染应有：粗体 / 列表 / 表格 / emoji，无原文 fence
+3. 切到首页 tab → 顶部应出现蓝色 banner，10 分钟内点 3 次正文 / 点 ✕ / 等待 10 min 任一即关闭
+4. 飞书"账单总结"bitable 应有对应行，"完整总结"列含 markdown 全文
+5. 下次冷启动 + 周一/月初/年初 → Scheduler 自动触发对应 kind（每天最多触发一次，节流由 UserDefaults 镜像控制）
+
+### M10 测试
+- 单元测试 43/43 通过（保持不变；M10 service 与 LLM 均为外部 IO，未加单测；逻辑覆盖通过手工调试推送验证）
+- Lint 0 diagnostics
+
+---
+
+## M11：App 图标 + 视觉打磨
+
+### 建设成果
+
+#### App Icon
+- 新增 `Resources/Assets.xcassets/AppIcon.appiconset/`
+  - `Contents.json`：iOS 17+ 单 1024×1024 universal manifest
+  - `coinflow_logo.png`：1024×1024 RGB 不透明（用户手工设计）
+- `scripts/gen_xcodeproj.py`：扩展名映射新增 `.xcassets → folder.assetcatalog`，将整个 `Assets.xcassets` 注册为 RESOURCE_FILES（actool 自动处理 bundle 内文件）
+- `ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon` 已在 build settings 声明（M1 起）
+
+#### 分类图标库
+- 新增 `Features/Categories/CategoryIconLibrary.swift`：100+ SF Symbols 候选，按"餐饮/出行/购物/账单/娱乐..."等 8 个 group 分类
+- 新增 `Features/Categories/IconPickerView.swift`：grid 选择器，复用于"新建分类 sheet"和"编辑分类 sheet"
+- 新增 `CoinFlowTests/CategoryIconLibraryTests.swift`：图标库唯一性 / group 完备性测试
+
+#### 外观设置
+- 新增 `Features/Settings/AppearanceSettingsView.swift`：金额染色策略选择（自动 / 收入绿 / 支出红 / 全 mono）+ 主题色微调
+- 新增 `Theme/AmountTintStore.swift`：`@Observable` 全局染色策略；持久化到 UserSettings；`SymbolColor.amountForeground(kind:)` 走它
+
+#### 其它打磨
+- 拆分 prompt builder：`BillsPromptBuilder` 拆为 `BillsOCRPromptBuilder` / `BillsVoicePromptBuilder`（OCR 与语音的 system prompt 不一样）
+- 跑马灯文档：`账单总结_promot.md` 留档用户决策版的 prompt 文本
+
+### M11 边界风险
+- 真机/模拟器 SpringBoard 缓存图标：第一次跑要"卸载旧 App + Clean Build Folder"才能看到新图标
+- xcassets 未来如要加 dark/tinted variant 需手工编辑 Contents.json 加 `"appearances": [{"appearance": "luminosity", "value": "dark"}]` 等 entry
+
+### M11 验收清单
+1. 卸载旧 App + Clean Build Folder + Run → 桌面图标应为"白底蓝色 ¥ 钱袋"自定义 logo
+2. 设置 → 外观 → 切换金额染色 → 流水列表的金额颜色应实时变化
+3. 编辑某个分类 → 点图标 → 应弹出 `IconPickerView`，按 group 浏览选择
+

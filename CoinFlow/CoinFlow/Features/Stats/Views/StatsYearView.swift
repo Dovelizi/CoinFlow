@@ -56,9 +56,9 @@ struct StatsYearView: View {
     private var yearSummary: some View {
         HStack(spacing: NotionTheme.space5) {
             yearStatCell("年度收入", amount: totalIncome,
-                         tone: NotionColor.green.text(scheme))
+                         tone: DirectionColor.amountForeground(kind: .income))
             yearStatCell("年度支出", amount: totalExpense,
-                         tone: NotionColor.red.text(scheme))
+                         tone: DirectionColor.amountForeground(kind: .expense))
             yearStatCell("月均支出", amount: avgExpense,
                          tone: Color.inkPrimary)
         }

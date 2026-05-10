@@ -49,7 +49,7 @@ struct StatsMainView: View {
                     .font(NotionFont.micro())
                     .foregroundStyle(Color.inkTertiary)
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(vm.monthlyNet >= 0 ? "+¥" : "-¥")
+                    Text("¥")
                         .font(.system(size: 22, weight: .medium, design: .rounded))
                         .foregroundStyle(toneColor(for: vm.monthlyNet))
                     Text(StatsFormat.intGrouped(absDecimal(vm.monthlyNet)))
@@ -292,7 +292,7 @@ struct StatsMainView: View {
             Spacer()
             Text("¥" + StatsFormat.intGrouped(cat.amount))
                 .font(NotionFont.amount(size: 15))
-                .foregroundStyle(NotionColor.red.text(scheme))
+                .foregroundStyle(DirectionColor.amountForeground(kind: .expense))
         }
         .padding(.horizontal, NotionTheme.space5)
         .padding(.vertical, 12)
@@ -331,7 +331,9 @@ struct StatsMainView: View {
     }
 
     private func toneColor(for net: Decimal) -> Color {
-        net >= 0 ? NotionColor.green.text(scheme) : NotionColor.red.text(scheme)
+        net >= 0
+            ? DirectionColor.amountForeground(kind: .income)
+            : DirectionColor.amountForeground(kind: .expense)
     }
 
     private func absDecimal(_ d: Decimal) -> Decimal { d < 0 ? -d : d }

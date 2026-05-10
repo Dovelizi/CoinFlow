@@ -103,7 +103,7 @@ struct RecordDetailSheet: View {
         VStack(alignment: .center, spacing: NotionTheme.space3) {
             HStack(alignment: .firstTextBaseline, spacing: NotionTheme.space2) {
                 Spacer(minLength: 0)
-                Text(vm.direction == .expense ? "-¥" : "+¥")
+                Text("¥")
                     .font(NotionFont.amountBold(size: 28))
                     .foregroundStyle(DirectionColor.amountForeground(kind: vm.direction))
                 TextField("0", text: $vm.amountText)

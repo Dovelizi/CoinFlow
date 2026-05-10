@@ -117,8 +117,12 @@ final class BillsVisionLLMClient {
         }
         let base64 = imageData.base64EncodedString()
 
-        // 2. 拼 Prompt（复用 BillsPromptBuilder 的字段约定，但场景化为"看图识账单"）
-        let prompt = buildVisionPrompt(allowedCategories: allowedCategories, today: today, tz: tz)
+        // 2. 拼 Prompt（统一走 BillsOCRPromptBuilder.buildForImage；与文本回落路径共用规则主体）
+        let prompt = BillsOCRPromptBuilder.buildForImage(
+            today: today,
+            tz: tz,
+            allowedCategories: allowedCategories
+        )
 
         // 3. 构造请求
         let url = URL(string: config.baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/chat/completions")!
@@ -211,53 +215,5 @@ final class BillsVisionLLMClient {
             image.draw(in: CGRect(origin: .zero, size: target))
         }
         return resized.jpegData(compressionQuality: quality)
-    }
-
-    /// 视觉 prompt：要求 LLM 输出与文本 LLM 完全一致的 `{"bills": [...]}` JSON
-    private func buildVisionPrompt(allowedCategories: [String], today: Date, tz: TimeZone) -> String {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        f.timeZone = tz
-        f.locale = Locale(identifier: "en_US_POSIX")
-        let nowStr = f.string(from: today)
-
-        let categoryHint = allowedCategories.isEmpty
-            ? "（用户尚未自定义分类，category 留 null 即可）"
-            : allowedCategories.joined(separator: " / ")
-
-        return """
-        你是一个账单识别专家。请仔细分析图片中的账单截图，提取其中的交易信息并以严格 json 格式返回。
-
-        【输出 schema】
-        {
-          "bills": [
-            {
-              "amount": <number>,                  // 金额，必须 > 0 且 <= 100000000；订单号/卡号/流水号绝对不能误填
-              "occurred_at": "yyyy-MM-dd HH:mm:ss",  // 交易发生时间，时区按截图所在地（中国默认 +0800）
-              "direction": "expense" | "income",   // 支出/收入，根据"-XX"或"+XX"或"付款/收款"判断
-              "category": <string>,                // 必须严格命中以下白名单之一，任何情况下都不得返回白名单外的值：\(categoryHint)
-              "merchant_type": "微信" | "支付宝" | "抖音" | "银行" | "其他",  // 账单来源渠道类型，必填
-              "note": <string|null>                // 商户名 + 备注（≤ 30 字）
-            }
-          ]
-        }
-
-        【关键规则】
-        1. 当前时间参考：\(nowStr)。occurred_at 不得晚于此时间。
-        2. 如果图片不是账单（如人像/风景/聊天/广告），返回 {"bills": []}。
-        3. 如果图片是账单但未识别出明确金额，返回 {"bills": []}。
-        4. 不要解释，不要 markdown 代码块包装，只返回 json。
-        5. 金额必须是数字（如 277.70），不得带货币符号或千分位。
-        6. merchant_type 判断规则：
-           - 页面顶部/角落出现"微信支付 / WeChat Pay/ 本服务由财付通提供" → "微信"
-           - 出现"支付宝 / Alipay / 蚂蚁 / 账单管理" → "支付宝"
-           - 出现"抖音 / 抖音月付 / 抖音支付/ 抖音" → "抖音"
-           - 出现"工商/招商/建设/交通/农业/中国/浦发/兴业/平安/民生/光大/邮政等银行 / 银行卡 / 信用卡账单" → "银行"
-           - 以上都不明显时 → "其他"
-        7. category 判断规则（严格执行）：
-           - 只能从上方白名单中选择一个最贴切的分类
-           - 内容无法对应到白名单中任何一个分类时，填入字符串 "其他"（不要填 null，不要自创新分类）
-           - 白名单若不包含"其他"，客户端会自动落为空让用户手填，无需你关心
-        """
     }
 }

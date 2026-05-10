@@ -243,8 +243,8 @@ struct StatsCategoryDetailView: View {
                 let pctTone: Color = {
                     guard prevAmount > 0 else { return Color.inkSecondary }
                     return slice.amount >= prevAmount
-                        ? NotionColor.red.text(scheme)
-                        : NotionColor.green.text(scheme)
+                        ? DirectionColor.amountForeground(kind: .expense)
+                        : DirectionColor.amountForeground(kind: .income)
                 }()
                 miniStat(label: "环比", value: pctText, tone: pctTone)
             }
@@ -368,9 +368,9 @@ struct StatsCategoryDetailView: View {
                 .foregroundStyle(Color.inkPrimary)
                 .lineLimit(1)
             Spacer()
-            Text("-¥" + StatsFormat.intGrouped(record.amount))
+            Text("¥" + StatsFormat.intGrouped(record.amount))
                 .font(NotionFont.amount(size: 14))
-                .foregroundStyle(NotionColor.red.text(scheme))
+                .foregroundStyle(DirectionColor.amountForeground(kind: .expense))
         }
         .padding(.horizontal, NotionTheme.space5)
         .padding(.vertical, 14)

@@ -70,9 +70,9 @@ struct StatsGaugeView: View {
 
             HStack(spacing: NotionTheme.space5) {
                 gaugeMini("收入", value: "¥" + StatsFormat.intGrouped(vm.monthlyIncome),
-                          tone: NotionColor.green.text(scheme))
+                          tone: DirectionColor.amountForeground(kind: .income))
                 gaugeMini("支出", value: "¥" + StatsFormat.intGrouped(vm.monthlyExpense),
-                          tone: NotionColor.red.text(scheme))
+                          tone: DirectionColor.amountForeground(kind: .expense))
                 gaugeMini("结余",
                           value: "¥" + StatsFormat.intGrouped(vm.monthlyNet >= 0
                                                               ? vm.monthlyNet

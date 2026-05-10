@@ -61,7 +61,7 @@ struct StatsHourlyView: View {
                     .foregroundStyle(Color.inkTertiary)
                 Text(String(format: "%02d:00 - %02d:00", peakHour, (peakHour + 1) % 24))
                     .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(NotionColor.red.text(scheme))
+                    .foregroundStyle(DirectionColor.amountForeground(kind: .expense))
                 Text("¥" + StatsFormat.intGrouped(vm.hourlyDistribution[peakHour].amount))
                     .font(NotionFont.small())
                     .foregroundStyle(Color.inkSecondary)
@@ -69,7 +69,7 @@ struct StatsHourlyView: View {
             Spacer()
             Image(systemName: "clock.fill")
                 .font(.system(size: 36))
-                .foregroundStyle(NotionColor.red.background(scheme))
+                .foregroundStyle(DirectionColor.amountForeground(kind: .expense).opacity(0.18))
         }
         .padding(NotionTheme.space5)
         .background(

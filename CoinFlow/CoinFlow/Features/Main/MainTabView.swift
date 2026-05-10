@@ -41,6 +41,10 @@ struct MainTabView: View {
     @StateObject private var coordinator = MainCoordinator()
     /// 底部胶囊可见性（滚动联动隐藏）
     @StateObject private var tabBarVisibility = TabBarVisibility()
+    /// 订阅金额配色：用户在设置里切换"系统/鲜亮"时，本 View 及其子树全部 rebuild，
+    /// 从而让 DirectionColor.amountForeground / Color.incomeGreen 等读到新值后的文字刷新颜色。
+    /// 不直接使用此属性，仅用于订阅刷新。
+    @EnvironmentObject private var amountTint: AmountTintStore
 
     var body: some View {
         ZStack(alignment: .bottom) {

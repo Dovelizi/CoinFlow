@@ -16,6 +16,7 @@ import SwiftUI
 struct CoinFlowApp: App {
 
     @StateObject private var appState = AppState()
+    @StateObject private var amountTint = AmountTintStore.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -26,9 +27,11 @@ struct CoinFlowApp: App {
                     if appState.hasCompletedOnboarding {
                         MainTabView()
                             .environmentObject(appState)
+                            .environmentObject(amountTint)
                     } else {
                         OnboardingView()
                             .environmentObject(appState)
+                            .environmentObject(amountTint)
                     }
                 }
                 .task { await appState.bootstrap() }
@@ -41,6 +44,12 @@ struct CoinFlowApp: App {
                         Task { @MainActor in
                             try? await Task.sleep(nanoseconds: 100_000_000)
                             await ScreenshotInbox.shared.tryConsumePasteboardImage()
+                        }
+                        // M10：每次进入 active 时检查是否要触发周/月/年总结生成。
+                        // 内部有节流（每天最多一次）+ 优先级（年>月>周）+ 阈值检查；
+                        // 全部异步、不阻塞 UI；失败仅落 SyncLogger。
+                        Task { @MainActor in
+                            await BillsSummaryScheduler.checkOnAppActive()
                         }
                     }
                 }

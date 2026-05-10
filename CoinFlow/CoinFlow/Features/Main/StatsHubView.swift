@@ -180,7 +180,7 @@ struct StatsHubView: View {
 
             // 主数字 — 居中；符号与数字间距收紧
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(vm.monthlyNet >= 0 ? "+¥" : "-¥")
+                Text("¥")
                     .font(.system(size: 20, weight: .regular, design: .rounded))
                     .foregroundStyle(toneForNet)
                 Text(StatsFormat.intGrouped(vm.monthlyNet < 0 ? -vm.monthlyNet : vm.monthlyNet))
@@ -200,11 +200,11 @@ struct StatsHubView: View {
             HStack(spacing: 0) {
                 miniKPI("收入",
                         "¥" + StatsFormat.intGrouped(vm.monthlyIncome),
-                        NotionColor.green.text(scheme))
+                        DirectionColor.amountForeground(kind: .income))
                 kpiDivider
                 miniKPI("支出",
                         "¥" + StatsFormat.intGrouped(vm.monthlyExpense),
-                        NotionColor.red.text(scheme))
+                        DirectionColor.amountForeground(kind: .expense))
                 kpiDivider
                 miniKPI("笔数",
                         "\(vm.monthlyCount)",
@@ -227,8 +227,8 @@ struct StatsHubView: View {
 
     private var toneForNet: Color {
         vm.monthlyNet >= 0
-            ? NotionColor.green.text(scheme)
-            : NotionColor.red.text(scheme)
+            ? DirectionColor.amountForeground(kind: .income)
+            : DirectionColor.amountForeground(kind: .expense)
     }
 
     @ViewBuilder

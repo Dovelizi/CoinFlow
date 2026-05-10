@@ -182,7 +182,15 @@ final class DatabaseManager {
             try execute("BEGIN TRANSACTION;")
             do {
                 for stmt in m.statements {
-                    try execute(stmt)
+                    do {
+                        try execute(stmt)
+                    } catch DatabaseError.stepFailed(_, let message)
+                        where m.tolerateDuplicateColumn
+                              && message.lowercased().contains("duplicate column name") {
+                        // 物理列已存在但 user_version 滞后的脏环境（dev 模拟器残留、
+                        // 测试状态污染）下幂等跳过；继续执行后续语句。
+                        continue
+                    }
                 }
                 try execute("PRAGMA user_version = \(m.version);")
                 try execute("COMMIT;")

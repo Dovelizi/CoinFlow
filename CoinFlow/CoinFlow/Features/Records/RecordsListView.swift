@@ -560,10 +560,16 @@ struct RecordsListView: View {
         .accessibilityLabel("\(month) 月\(isSelected ? "，已选中" : "")")
     }
 
-    /// 段头右侧"¥xxx 当日合计"文案。net 为负展示 -¥（支出多于收入），否则 ¥。
+    /// 段头右侧"¥xxx 当日合计"文案。按用户规范去掉正负号，方向由 daySummaryColor 表达。
     private func daySummaryText(_ net: Decimal) -> String {
-        let absVal = AmountFormatter.display(net < 0 ? -net : net)
-        return (net < 0 ? "-¥" : "¥") + absVal
+        "¥" + AmountFormatter.display(net < 0 ? -net : net)
+    }
+
+    /// 当日净额颜色：支出多(net<0) = 红，收入多(net>0) = 绿，持平 = 灰。
+    private func daySummaryColor(_ net: Decimal) -> Color {
+        if net > 0 { return DirectionColor.amountForeground(kind: .income) }
+        if net < 0 { return DirectionColor.amountForeground(kind: .expense) }
+        return Color.inkTertiary
     }
 }
 

@@ -34,12 +34,11 @@ extension Color {
 }
 
 /// 金额方向色（§5.5.2 唯一允许的彩色文字之一）。
+/// 值来自 AmountTintStore（用户在设置里选"系统"或"鲜亮"配色）。
+/// SwiftUI body 只在 MainActor 执行，assumeIsolated 访问 @MainActor 单例是安全的。
 enum DirectionColor {
     static func amountForeground(kind: CategoryKind) -> Color {
-        switch kind {
-        case .expense: return Color(hex: "#D44C47")  // Notion red dark variant
-        case .income:  return Color(hex: "#448361")  // Notion green dark variant
-        }
+        MainActor.assumeIsolated { AmountTintStore.shared.color(for: kind) }
     }
 }
 

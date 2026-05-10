@@ -59,6 +59,10 @@ enum FeishuConfig {
     private static let udAppTokenKey = "feishu.bitable.app_token"
     private static let udTableIdKey  = "feishu.bitable.table_id"
     private static let udBitableURLKey = "feishu.bitable.url"
+    /// M10-Fix2 · 账单总结独立 bitable 元数据缓存
+    private static let udSummaryAppTokenKey = "feishu.summary_bitable.app_token"
+    private static let udSummaryTableIdKey  = "feishu.summary_bitable.table_id"
+    private static let udSummaryBitableURLKey = "feishu.summary_bitable.url"
 
     /// 多维表格 App Token（Wiki 模式下是 obj_token；自动建表模式下是 create_app 返回值）
     static var bitableAppToken: String? {
@@ -85,12 +89,39 @@ enum FeishuConfig {
         return true
     }
 
+    /// M10-Fix2 · 账单总结独立 bitable 元数据
+    static var summaryAppToken: String? {
+        get { UserDefaults.standard.string(forKey: udSummaryAppTokenKey) }
+        set { UserDefaults.standard.set(newValue, forKey: udSummaryAppTokenKey) }
+    }
+    static var summaryTableId: String? {
+        get { UserDefaults.standard.string(forKey: udSummaryTableIdKey) }
+        set { UserDefaults.standard.set(newValue, forKey: udSummaryTableIdKey) }
+    }
+    static var summaryBitableURL: String? {
+        get { UserDefaults.standard.string(forKey: udSummaryBitableURLKey) }
+        set { UserDefaults.standard.set(newValue, forKey: udSummaryBitableURLKey) }
+    }
+    static var hasSummaryBitable: Bool {
+        guard let t = summaryAppToken, !t.isEmpty,
+              let id = summaryTableId, !id.isEmpty else { return false }
+        return true
+    }
+
     /// 重置所有 bitable 缓存（测试 / 用户手动重建用）
     static func resetBitableCache() {
         let ud = UserDefaults.standard
         ud.removeObject(forKey: udAppTokenKey)
         ud.removeObject(forKey: udTableIdKey)
         ud.removeObject(forKey: udBitableURLKey)
+    }
+
+    /// M10-Fix2 · 重置 summary bitable 缓存
+    static func resetSummaryBitableCache() {
+        let ud = UserDefaults.standard
+        ud.removeObject(forKey: udSummaryAppTokenKey)
+        ud.removeObject(forKey: udSummaryTableIdKey)
+        ud.removeObject(forKey: udSummaryBitableURLKey)
     }
 
     // MARK: - Private

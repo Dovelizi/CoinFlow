@@ -5,7 +5,7 @@
 - 平台：iOS 17+，SwiftUI，Xcode 15+
 - 主题：Notion 风格（深色优先，低饱和，无 shadow 的 stroke 卡片）
 - 数据：本地 SQLCipher 加密；云端同步到用户自己的飞书多维表格（明文上行以便在飞书侧查看/统计）
-- 状态：Phase 1（M1–M9）已完成，进入真机打磨期
+- 状态：Phase 1（M1–M9）已完成；M10（LLM 账单总结）+ M11（App 图标 / 视觉打磨）已交付，进入真机打磨期
 
 > 完整技术设计请看 [`CoinFlow-iOS-MVP技术设计.md`](./CoinFlow-iOS-MVP技术设计.md)
 > 里程碑 / 决策日志请看 [`CoinFlow/PROJECT_STATE.md`](./CoinFlow/PROJECT_STATE.md)
@@ -18,8 +18,10 @@
 - **语音多笔记账**：按住说话（左滑取消），本地 SFSpeechRecognizer 转写（强制 onDevice），LLM 拆分为多笔账单，逐笔向导中可回跳编辑
 - **手动快速记账**：金额 + 分类 + 备注 + 日期，一个 Modal 搞定
 - **流水列表**：List / Stack（扑克叠）/ Grid 三视图切换；月份 popover；搜索；滑删
-- **分类管理**：14 个预设分类（不可删）+ 自定义；SF Symbols 图标 + Notion 调色板
+- **分类管理**：14 个预设分类（不可删）+ 自定义；100+ SF Symbols 图标库（按 group 浏览）+ Notion 调色板
 - **云端同步**：飞书多维表格自建应用；增量推送 + 手动拉取；失败自动退避重试
+- **LLM 账单总结**：周一 / 月初 / 年初进入 App 自动生成上一周期的情绪化复盘；MarkdownUI 浮窗 + 首页 banner 推送；归档到飞书"账单总结"独立 bitable 永久留存
+- **外观设置**：金额染色策略（自动 / 收入绿 / 支出红 / 全 mono）+ 主题色微调
 - **隐私**：Face ID 冷启动锁 + 应用切换器模糊遮罩
 - **Back Tap → Shortcuts → AppIntent** 唤醒链路（真"自动消费最新截图"V2 处理）
 
@@ -62,6 +64,7 @@ cp CoinFlow/CoinFlow/Config/Config.example.plist CoinFlow/CoinFlow/Config/Config
 - **LLM Provider（可选，不填就走规则引擎）**
   - 支持 DeepSeek / Qwen / Doubao / ModelScope / OpenAI，都走 OpenAI 兼容协议
   - `LLM_Text_Provider` 管语音多笔解析；`LLM_Vision_Provider` 管截图 OCR 第 3 档
+  - `LLM_Summary_Provider`（M10）管账单总结；推荐 modelscope Kimi-K2.5（长 context + 中文好）
   - 任选 1 家填即可；推荐 ModelScope（免费额度 + 多模型可选）或 DeepSeek（中文最快）
 
 详细填写指南见 [`CoinFlow/API_KEYS.md`](./CoinFlow/API_KEYS.md)。
@@ -81,6 +84,9 @@ Xcode 里选 Simulator 或真机 → ⌘R。
 ├── CoinFlow/                       # 主工程目录
 │   ├── CoinFlow.xcodeproj          # Xcode 工程（由脚本生成，勿手动改）
 │   ├── CoinFlow/                   # Swift 源码（App / Config / Data / Features / Theme / Security …）
+│   │   ├── Features/Stats/Summary/ # M10 LLM 账单总结（service / scheduler / views）
+│   │   ├── Resources/Prompts/      # M10 Prompt 资源（BillsSummary.system.md）
+│   │   └── Resources/Assets.xcassets/AppIcon.appiconset/  # M11 App 图标
 │   ├── CoinFlowTests/              # XCTest 单元测试
 │   ├── scripts/
 │   │   ├── gen_xcodeproj.py        # 工程脚本化生成
@@ -88,7 +94,7 @@ Xcode 里选 Simulator 或真机 → ⌘R。
 │   ├── PROJECT_STATE.md            # 里程碑 / 决策日志
 │   ├── API_KEYS.md                 # 密钥填写指南（.gitignore）
 │   └── INTERACTION_{AUDIT,TEST_PLAN}.md
-├── CoinFlow-iOS-MVP技术设计.md      # 技术设计文档
+├── CoinFlow-iOS-MVP技术设计.md      # 技术设计文档（§13 = M10 账单总结）
 ├── CoinFlowPreview/                # 设计稿截屏工具（可忽略）
 ├── design/                         # 80 张设计稿（设计验收基准）
 └── README.md                       # 本文件
@@ -159,6 +165,12 @@ A：目前只做了剪贴板打时间戳 + 100ms 回前台探测，真"自动选
 
 **Q：多设备同步为什么要手动拉？**
 A：飞书没有客户端级实时推送。你在 A 设备改了账单，B 设备打开 App 后去 `设置 → 同步状态 → 从飞书拉取` 即可。
+
+**Q：账单总结是怎么触发的？看不到 banner 怎么办？**
+A：调度器在 App 进入前台（`scenePhase == .active`）时检查"今天是不是周一/月 1/年 1/1"，按需触发对应 kind；UserDefaults 节流确保每天最多触发一次。如果想立刻测试：去`设置 → 账单总结 → 点周报/月报/年报按钮`，10–15 秒后浮窗出现，切到首页 tab 即可看到推送 banner（10 分钟内点击 3 次 / 点 ✕ / 等待超时任一关闭）。
+
+**Q：账单总结的飞书归档在哪？**
+A：与账单流水**不在同一张表**。首次成功生成总结时，App 会在你飞书"我的空间"自动建一张名为「CoinFlow 账单总结」的独立 bitable，含周期标签 / 总收入 / 总支出 / 一句话洞察 / 完整总结 / LLM 模型等 12 列。bitable URL 在 `设置 → 关于 → 配置诊断` 显示。
 
 ---
 
