@@ -279,7 +279,12 @@ struct SettingsView: View {
 
     /// 右侧值预览："Dark Notion · 系统"
     private var appearanceSummaryText: String {
-        let themeName = themeStore.isEnabled ? "Dark Liquid" : "Dark Notion"
+        let themeName: String
+        switch themeStore.kind {
+        case .notion:       themeName = "Dark Notion"
+        case .darkLiquid:   themeName = "Dark Liquid"
+        case .liquidGlass:  themeName = "Liquid Glass"
+        }
         return "\(themeName) · \(amountTint.palette.displayName)"
     }
 

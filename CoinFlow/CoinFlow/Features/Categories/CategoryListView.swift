@@ -322,7 +322,7 @@ struct AddCategorySheet: View {
                 .padding(.bottom, NotionTheme.space9)
             }
         }
-        .background(Color.appSheetCanvas.ignoresSafeArea())
+        .themedSheetSurface()
         .keyboardDoneToolbar()
     }
 

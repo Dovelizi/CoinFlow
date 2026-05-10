@@ -26,39 +26,92 @@
 
 import SwiftUI
 
+// MARK: - 应用主题三态枚举
+
+/// 应用全局主题枚举
+///
+/// - notion: 现有 Notion 风格（实色扁平，浅色为主）
+/// - darkLiquid: v4 深炭灰实色（即旧版 "Dark Liquid"，并非真玻璃）
+/// - liquidGlass: iOS 26 真·液态玻璃（跟随系统亮暗，使用 .glassEffect API）
+enum AppTheme: String, CaseIterable {
+    case notion
+    case darkLiquid
+    case liquidGlass
+}
+
 // MARK: - 全局开关（持久化到 UserDefaults）
 
-/// LGA 主题运行时开关（key = "theme.lga.enabled"）
+/// 应用主题运行时存储
+///
+/// - 新版持久化 key：`theme.app.kind`（String）
+/// - 旧版兼容：若新 key 不存在但旧 `theme.lga.enabled` 为 true，则迁移到 .darkLiquid
+/// - 兼容计算属性 `isEnabled` 等价 `kind == .darkLiquid`，保旧调用点零改动
 final class LGAThemeStore: ObservableObject {
 
     static let shared = LGAThemeStore()
 
-    private static let storageKey = "theme.lga.enabled"
+    private static let storageKey = "theme.app.kind"
+    private static let legacyBoolKey = "theme.lga.enabled"
 
-    @Published var isEnabled: Bool {
-        didSet { UserDefaults.standard.set(isEnabled, forKey: Self.storageKey) }
+    @Published var kind: AppTheme {
+        didSet {
+            UserDefaults.standard.set(kind.rawValue, forKey: Self.storageKey)
+        }
     }
 
     private init() {
-        self.isEnabled = UserDefaults.standard.bool(forKey: Self.storageKey)
+        let defaults = UserDefaults.standard
+        if let raw = defaults.string(forKey: Self.storageKey),
+           let parsed = AppTheme(rawValue: raw) {
+            self.kind = parsed
+        } else if defaults.bool(forKey: Self.legacyBoolKey) {
+            // 旧版 Dark Liquid 用户：迁移到 darkLiquid
+            self.kind = .darkLiquid
+        } else {
+            self.kind = .notion
+        }
     }
 
+    /// 旧 API 兼容：等价 `kind == .darkLiquid`
+    var isEnabled: Bool {
+        get { kind == .darkLiquid }
+        set {
+            // 仅当显式 setEnabled(true/false) 才会落到旧语义
+            kind = newValue ? .darkLiquid : .notion
+        }
+    }
+
+    /// 旧 API：开关 darkLiquid（保留以兼容历史调用）
     @MainActor
     func setEnabled(_ newValue: Bool, animated: Bool = true) {
-        guard isEnabled != newValue else { return }
+        let target: AppTheme = newValue ? .darkLiquid : .notion
+        setKind(target, animated: animated)
+    }
+
+    /// 新 API：直接切换三态主题
+    @MainActor
+    func setKind(_ newValue: AppTheme, animated: Bool = true) {
+        guard kind != newValue else { return }
         if animated {
             withAnimation(.easeInOut(duration: 0.35)) {
-                isEnabled = newValue
+                kind = newValue
             }
         } else {
-            isEnabled = newValue
+            kind = newValue
         }
     }
 }
 
 /// 静态查询接口（非响应式，用于 ViewModifier body 内做一次性分支）
 enum LGAThemeRuntime {
-    static var isEnabled: Bool { LGAThemeStore.shared.isEnabled }
+    /// 旧 API：等价 darkLiquid（保留兼容）
+    static var isEnabled: Bool { LGAThemeStore.shared.kind == .darkLiquid }
+
+    /// 新 API：当前主题枚举
+    static var kind: AppTheme { LGAThemeStore.shared.kind }
+
+    /// 是否为 Liquid Glass 真玻璃主题
+    static var isLiquidGlass: Bool { LGAThemeStore.shared.kind == .liquidGlass }
 }
 
 // MARK: - 主题常量（v4 实色深炭灰）
@@ -241,14 +294,18 @@ private struct CardSurfaceModifier: ViewModifier {
     var lgaShadow: Bool
 
     func body(content: Content) -> some View {
-        if store.isEnabled {
+        switch store.kind {
+        case .liquidGlass:
+            // 真玻璃卡片：iOS 26 .glassEffect()，跟随系统亮暗
+            content._lgRealCard(cornerRadius: cornerRadius)
+        case .darkLiquid:
             // v5：LGA 模式也尊重调用方的 cornerRadius，主题切换时圆角保持一致
             content.modifier(GlassACardModifier(
                 radius: cornerRadius,
                 highlight: lgaHighlight,
                 shadow: lgaShadow
             ))
-        } else {
+        case .notion:
             content
                 .background(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -266,9 +323,13 @@ private struct AppTabPillBackgroundModifier: ViewModifier {
     @ObservedObject private var store = LGAThemeStore.shared
 
     func body(content: Content) -> some View {
-        if store.isEnabled {
+        switch store.kind {
+        case .liquidGlass:
+            // 真玻璃浮岛：iOS 26 .glassEffect(.regular.interactive(), in: .capsule)
+            content._lgRealPill()
+        case .darkLiquid:
             content.modifier(GlassAPillModifier())
-        } else {
+        case .notion:
             content
                 .background(
                     Capsule()
@@ -308,9 +369,12 @@ extension View {
 
     @ViewBuilder
     func glassChipIfLGA(radius: CGFloat = 8, tint: Color? = nil) -> some View {
-        if LGAThemeRuntime.isEnabled {
-            modifier(GlassAChipModifier(radius: radius, tint: tint))
-        } else {
+        switch LGAThemeStore.shared.kind {
+        case .liquidGlass:
+            self._lgRealChip(cornerRadius: radius, tint: tint)
+        case .darkLiquid:
+            self.modifier(GlassAChipModifier(radius: radius, tint: tint))
+        case .notion:
             self
         }
     }
@@ -320,13 +384,109 @@ extension View {
 
 extension Color {
     /// 主流程页面全屏背景
+    ///
+    /// - notion: 维持原 canvasBG（白/纯黑）
+    /// - darkLiquid / liquidGlass: 透明，由 ThemedBackgroundLayer 提供主题专属背景
     static var appCanvas: Color {
-        LGAThemeRuntime.isEnabled ? Color.clear : Color.canvasBG
+        switch LGAThemeStore.shared.kind {
+        case .notion:                    return Color.canvasBG
+        case .darkLiquid, .liquidGlass:  return Color.clear
+        }
     }
 
     /// Sheet/cover 内页全屏背景（独立 presentation 层级无法透出根背景）
+    ///
+    /// - notion / darkLiquid：返回原实色（行为不变）
+    /// - liquidGlass：返回 clear，由调用点叠加 `themedSheetSurface()` 注入
+    ///   `LiquidGlassBackground` 渐变 + `presentationBackground(.clear)`，
+    ///   让 sheet 整层呈现真玻璃折射
     static var appSheetCanvas: Color {
-        LGAThemeRuntime.isEnabled ? LGATheme.canvas : Color.canvasBG
+        switch LGAThemeStore.shared.kind {
+        case .notion:       return Color.canvasBG
+        case .darkLiquid:   return LGATheme.canvas
+        case .liquidGlass:  return Color.clear
+        }
+    }
+}
+
+// MARK: - 主题感知的 Sheet/Cover 表面修饰器
+
+/// `.themedSheetSurface(kind:)` —— 应用于 sheet / fullScreenCover / popover 的根视图
+///
+/// 设计目标：sheet 在 `liquidGlass` 主题下整体呈现真玻璃折射感。
+///
+/// - notion / darkLiquid：等价 `Color.appSheetCanvas.ignoresSafeArea()`，行为不变
+/// - liquidGlass：
+///   1. 底层叠 `LiquidGlassBackground`（暗夜紫 + 三色光斑）作为色彩内容
+///   2. 调用 `.presentationBackground(.clear)` 让 sheet 容器透明，
+///      使下层应用主背景能与 sheet 内 `LiquidGlassBackground` 共同形成
+///      "玻璃折射" 视觉
+///
+/// 用法：把现有 sheet 内 `Color.appSheetCanvas.ignoresSafeArea()` 替换为
+///       `.themedSheetSurface()` 即可
+private struct ThemedSheetSurfaceModifier: ViewModifier {
+    @ObservedObject private var store = LGAThemeStore.shared
+    var kind: LGAPageKind
+
+    func body(content: Content) -> some View {
+        ZStack {
+            switch store.kind {
+            case .liquidGlass:
+                // Sheet 场景专用暗化：
+                // 直接复用全屏 `LiquidGlassBackground` 在 200~600pt 高度的 sheet 里会被
+                // 420pt 半径的顶部靖蓝光斑整体覆盖，叠 `.screen` 后观感偏亮（"奶白"），
+                // 与全屏主题背景对不上。这里在玻璃背景之上叠一层 25% 黑遮罩，
+                // 保留玻璃折射色彩信息的同时让整体亮度回到主页同档。
+                // 只作用于 sheet，全屏页（`themedBackground`）不受影响。
+                ZStack {
+                    LiquidGlassBackground(kind: kind)
+                    Color.black.opacity(0.25).ignoresSafeArea()
+                }
+            case .darkLiquid:
+                LGATheme.canvas.ignoresSafeArea()
+            case .notion:
+                Color.canvasBG.ignoresSafeArea()
+            }
+            content
+        }
+        .modifier(ThemedPresentationBackgroundModifier())
+    }
+}
+
+/// `.themedPresentationBackground()` —— 仅 liquidGlass 主题给 sheet 容器透明化
+///
+/// 通过 `.presentationBackground(.clear)` 让 sheet 自身的灰色卡背景消失，
+/// 露出我们自绘的 `LiquidGlassBackground` 渐变 + 折射玻璃效果。
+private struct ThemedPresentationBackgroundModifier: ViewModifier {
+    @ObservedObject private var store = LGAThemeStore.shared
+
+    func body(content: Content) -> some View {
+        if store.kind == .liquidGlass {
+            if #available(iOS 16.4, *) {
+                content.presentationBackground(.clear)
+            } else {
+                content
+            }
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    /// 主题感知的 sheet/cover 表面：
+    /// - 在 liquidGlass 主题下叠 LiquidGlassBackground 并透明化 sheet 容器
+    /// - 在 notion / darkLiquid 主题下回退到旧实色背景，行为完全等价
+    ///
+    /// 使用方式：替换原来 sheet 内的 `Color.appSheetCanvas.ignoresSafeArea()` 为
+    /// `.themedSheetSurface()` 即可（注意要包裹整个 sheet 内容）
+    func themedSheetSurface(kind: LGAPageKind = .default) -> some View {
+        modifier(ThemedSheetSurfaceModifier(kind: kind))
+    }
+
+    /// 仅 liquidGlass 主题对 sheet 容器自身做透明化（用于无法直接包裹 ZStack 的场景）
+    func themedPresentationBackground() -> some View {
+        modifier(ThemedPresentationBackgroundModifier())
     }
 }
 
@@ -338,9 +498,12 @@ private struct ThemedPageBackground: ViewModifier {
 
     func body(content: Content) -> some View {
         ZStack {
-            if store.isEnabled {
+            switch store.kind {
+            case .liquidGlass:
+                LiquidGlassBackground(kind: kind)
+            case .darkLiquid:
                 LiquidGlassABackground(kind: kind)
-            } else {
+            case .notion:
                 Color.canvasBG.ignoresSafeArea()
             }
             content
@@ -363,9 +526,12 @@ struct ThemedBackgroundLayer: View {
     }
 
     var body: some View {
-        if store.isEnabled {
+        switch store.kind {
+        case .liquidGlass:
+            LiquidGlassBackground(kind: kind)
+        case .darkLiquid:
             LiquidGlassABackground(kind: kind)
-        } else {
+        case .notion:
             Color.canvasBG.ignoresSafeArea()
         }
     }

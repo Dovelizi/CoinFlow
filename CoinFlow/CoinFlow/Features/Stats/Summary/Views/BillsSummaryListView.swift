@@ -221,10 +221,7 @@ struct BillsSummaryListView: View {
             .foregroundStyle(isLoading ? Color.white : Color.inkPrimary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 999)
-                    .fill(isLoading ? Color.accentBlue : Color.surfaceOverlay)
-            )
+            .background(testButtonBackground(isLoading: isLoading))
             .overlay(
                 RoundedRectangle(cornerRadius: 999)
                     .stroke(isLoading ? Color.accentBlue : Color.border,
@@ -233,6 +230,21 @@ struct BillsSummaryListView: View {
         }
         .disabled(isLoading)
         .accessibilityLabel("生成\(kind.displayName)总结")
+    }
+
+    /// 顶部测试按钮背景：
+    /// - loading：实色 accentBlue（突出 loading 状态）
+    /// - liquidGlass 主题 + 非 loading：`.ultraThinMaterial` 真玻璃，直接替换原 `surfaceOverlay` 黑胶囊
+    /// - notion / darkLiquid 主题 + 非 loading：维持 `surfaceOverlay`，行为不变
+    @ViewBuilder
+    private func testButtonBackground(isLoading: Bool) -> some View {
+        if isLoading {
+            RoundedRectangle(cornerRadius: 999).fill(Color.accentBlue)
+        } else if LGAThemeStore.shared.kind == .liquidGlass {
+            RoundedRectangle(cornerRadius: 999).fill(.ultraThinMaterial)
+        } else {
+            RoundedRectangle(cornerRadius: 999).fill(Color.surfaceOverlay)
+        }
     }
 
     private func errorBanner(_ message: String) -> some View {
@@ -351,10 +363,7 @@ struct BillsSummaryListView: View {
                     .padding(.vertical, NotionTheme.space5)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, NotionTheme.space5)
-                    .background(
-                        RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
-                            .fill(Color.surfaceOverlay.opacity(0.4))
-                    )
+                    .background(emptySectionBackground)
             } else {
                 VStack(spacing: NotionTheme.space3) {
                     ForEach(items) { s in
@@ -408,14 +417,38 @@ struct BillsSummaryListView: View {
                 .foregroundStyle(Color.inkTertiary)
         }
         .padding(NotionTheme.space5)
-        .background(
-            RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
-                .fill(Color.surfaceOverlay)
-        )
+        .background(historyRowBackground)
         .overlay(
             RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
                 .stroke(Color.border, lineWidth: NotionTheme.borderWidth)
         )
+    }
+
+    /// 历史卡背景：
+    /// - liquidGlass：`.ultraThinMaterial` 真玻璃，透出底层玻璃背景渐变
+    /// - notion / darkLiquid：维持 `Color.surfaceOverlay`
+    @ViewBuilder
+    private var historyRowBackground: some View {
+        if LGAThemeStore.shared.kind == .liquidGlass {
+            RoundedRectangle(cornerRadius: NotionTheme.radiusCard, style: .continuous)
+                .fill(.ultraThinMaterial)
+        } else {
+            RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
+                .fill(Color.surfaceOverlay)
+        }
+    }
+
+    /// 空态 section 背景：同 historyRowBackground 策略，但 liquidGlass 下使用更淡的玻璃
+    @ViewBuilder
+    private var emptySectionBackground: some View {
+        if LGAThemeStore.shared.kind == .liquidGlass {
+            RoundedRectangle(cornerRadius: NotionTheme.radiusCard, style: .continuous)
+                .fill(.ultraThinMaterial)
+                .opacity(0.6)
+        } else {
+            RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
+                .fill(Color.surfaceOverlay.opacity(0.4))
+        }
     }
 
     private var emptyState: some View {

@@ -27,26 +27,33 @@ struct RecordDetailSheet: View {
     @State private var clampedToastText: String? = nil
     @State private var clampedToastTask: DispatchWorkItem? = nil
 
+    /// 备注输入框底色：liquidGlass 主题下避免黑色实色（v6 修正）
+    /// - notion / darkLiquid：维持原 `Color.canvasBG`（白/纯黑）
+    /// - liquidGlass：用半透 hoverBg，保留输入框轮廓但不挡玻璃折射
+    private var noteFieldFill: Color {
+        LGAThemeStore.shared.kind == .liquidGlass
+            ? Color.hoverBg
+            : Color.canvasBG
+    }
+
     init(record: Record) {
         _vm = StateObject(wrappedValue: RecordDetailViewModel(record: record))
     }
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appSheetCanvas.ignoresSafeArea()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: NotionTheme.space6) {
-                        amountField
-                        categoryField
-                        noteField
-                        metaInfo
-                        deleteButton
-                    }
-                    .padding(NotionTheme.space5)
+            ScrollView {
+                VStack(alignment: .leading, spacing: NotionTheme.space6) {
+                    amountField
+                    categoryField
+                    noteField
+                    metaInfo
+                    deleteButton
                 }
-                clampedToastView
+                .padding(NotionTheme.space5)
             }
+            .overlay(clampedToastView)
+            .scrollContentBackground(.hidden)
             .navigationTitle("流水详情")
             .navigationBarTitleDisplayMode(.inline)
             // 金额拦截 → 弹彩蛋 toast（仅 overLimit 触发，与 NewRecordModal 一致）
@@ -55,15 +62,25 @@ struct RecordDetailSheet: View {
             }
             .toolbar {
                 // 左上：关闭（同时作为「取消」；脏标记才弹二次确认）
+                //
+                // liquidGlass 主题（iOS 26+）下交给系统 toolbar 自己包玻璃胶囊，
+                // 不再手绘 `Circle().fill(Color.hoverBg)`——否则会在系统玻璃胶囊上
+                // 又叠一层深色实心圆，视觉上显示为黑色圆点。
+                // 其他两个主题保持原有手绘圆形按钮（与 NewRecordModal 顶栏风格一致）。
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         attemptDismiss()
                     } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(Color.inkPrimary)
-                            .frame(width: 32, height: 32)
-                            .background(Circle().fill(Color.hoverBg))
+                        if LGAThemeStore.shared.kind == .liquidGlass {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .medium))
+                        } else {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Color.inkPrimary)
+                                .frame(width: 32, height: 32)
+                                .background(Circle().fill(Color.hoverBg))
+                        }
                     }
                 }
                 // 右上：保存（仅在有修改且输入合法时可点）
@@ -118,6 +135,7 @@ struct RecordDetailSheet: View {
                 Button("继续编辑", role: .cancel) {}
             }
         }
+        .themedSheetSurface()
     }
 
     /// 关闭请求统一入口：有脏改 → 弹二次确认；否则直接关闭。
@@ -270,7 +288,7 @@ struct RecordDetailSheet: View {
             .padding(NotionTheme.space4)
             .background(
                 RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
-                    .fill(Color.canvasBG)
+                    .fill(noteFieldFill)
             )
         }
         .padding(NotionTheme.space5)

@@ -403,7 +403,7 @@ struct HomeMainView: View {
             actionSheetCard
                 .presentationDetents([.height(200)])
                 .presentationDragIndicator(.visible)
-                .presentationBackground(Color.appSheetCanvas)
+                .themedPresentationBackground()
         } else {
             actionSheetCard
                 .presentationDetents([.height(200)])
@@ -442,7 +442,7 @@ struct HomeMainView: View {
         }
         .padding(.top, NotionTheme.space5)
         .frame(maxWidth: .infinity, alignment: .top)
-        .background(Color.appSheetCanvas)
+        .themedSheetSurface()
     }
 
     @ViewBuilder

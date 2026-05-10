@@ -28,25 +28,23 @@ struct NewRecordModal: View {
     }
 
     var body: some View {
-        ZStack {
-            Color.appSheetCanvas.ignoresSafeArea()
-            VStack(spacing: 0) {
-                navBar
-                ScrollView {
-                    VStack(alignment: .leading, spacing: NotionTheme.space6) {
-                        amountField
-                        directionToggle
-                        fieldsGroupCard
-                        noteField
-                        if let err = vm.saveError {
-                            errorBanner(err)
-                        }
+        VStack(spacing: 0) {
+            navBar
+            ScrollView {
+                VStack(alignment: .leading, spacing: NotionTheme.space6) {
+                    amountField
+                    directionToggle
+                    fieldsGroupCard
+                    noteField
+                    if let err = vm.saveError {
+                        errorBanner(err)
                     }
-                    .padding(NotionTheme.space5)
                 }
+                .padding(NotionTheme.space5)
             }
-            clampedToastView
         }
+        .overlay(clampedToastView)
+        .themedSheetSurface()
         // 键盘「完成」按钮：由 AmountTextFieldUIKit / NoteTextFieldUIKit 自身的
         // inputAccessoryView 提供（系统级，自动定位在键盘正上方，绝对稳定）
         // 金额拦截 → 弹彩蛋 toast（每次新拦截都重置 1.6s 显示）
@@ -134,13 +132,15 @@ struct NewRecordModal: View {
                 .frame(maxWidth: .infinity, alignment: .center)
 
             // 左 取消
+            // 内边距由 space5(12) → space6(16)：与系统 nav bar 16~20pt 内边距对齐，
+            // 避免文字过分贴近屏幕边缘
             HStack {
                 Button("取消") { dismiss() }
                     .font(NotionFont.body())
                     .foregroundStyle(Color.inkPrimary)
                 Spacer()
             }
-            .padding(.horizontal, NotionTheme.space5)
+            .padding(.horizontal, NotionTheme.space6)
 
             // 右 保存
             HStack {
@@ -163,7 +163,7 @@ struct NewRecordModal: View {
                 }
                 .disabled(!vm.canSave)
             }
-            .padding(.horizontal, NotionTheme.space5)
+            .padding(.horizontal, NotionTheme.space6)
         }
         .frame(height: NotionTheme.topbarHeight)
         .background(Color.appSheetCanvas)
@@ -256,10 +256,21 @@ struct NewRecordModal: View {
                 .padding(.vertical, NotionTheme.space3)
                 .background(
                     RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
-                        .fill(active ? Color.surfaceOverlay : Color.clear)
+                        .fill(directionActiveFill(active: active))
                 )
         }
         .buttonStyle(.plain)
+    }
+
+    /// 「支出/收入」active 段填色：
+    /// - liquidGlass 主题：用半透白，叠在 hoverBg 胶囊上呈现明显但不刺眼的高亮，
+    ///   避免 `Color.surfaceOverlay` 在深色系统下变成黑色实心胶囊
+    /// - notion / darkLiquid：维持原 `Color.surfaceOverlay`，行为完全不变
+    private func directionActiveFill(active: Bool) -> Color {
+        guard active else { return Color.clear }
+        return LGAThemeStore.shared.kind == .liquidGlass
+            ? Color.white.opacity(0.18)
+            : Color.surfaceOverlay
     }
 
     // MARK: - 分类 / 时间 / 账本（设计稿严格对齐：单卡 + 内部 hairline 分隔）
@@ -377,7 +388,9 @@ struct NewRecordModal: View {
 
             Spacer(minLength: 0)
         }
-        .background(Color.appSheetCanvas)
+        // liquidGlass 主题下用 `themedSheetSurface()` 让 sheet 透出玻璃折射；
+        // 其他主题等价于原 `Color.appSheetCanvas` 实色背景
+        .themedSheetSurface()
     }
 
     // MARK: - Note field（设计稿：label 外置上方 + 单层 hover_bg 输入框）

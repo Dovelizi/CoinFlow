@@ -177,7 +177,7 @@ struct CaptureConfirmView: View {
             }
             clampedToastView
         }
-        .background(Color.appSheetCanvas.ignoresSafeArea())
+        .themedSheetSurface()
         // 自绘键盘「完成」工具栏（替代原生 .toolbar { .keyboard }）
         .keyboardDoneToolbar()
         // 金额拦截 → 弹彩蛋 toast（仅 overLimit 触发，与 NewRecord/RecordDetail 一致）
@@ -866,7 +866,7 @@ struct CaptureConfirmView: View {
                 TextEditor(text: $vm.note)
                     .font(NotionFont.body())
                     .padding(NotionTheme.space5)
-                    .background(Color.appSheetCanvas)
+                    .scrollContentBackground(.hidden)
                 Spacer()
             }
             .navigationTitle("备注")
@@ -881,6 +881,7 @@ struct CaptureConfirmView: View {
                 }
             }
         }
+        .themedSheetSurface()
     }
 
     // MARK: - Keep screenshot card
@@ -1054,7 +1055,7 @@ struct CaptureConfirmView: View {
 
             Spacer(minLength: 0)
         }
-        .background(Color.appSheetCanvas)
+        .themedSheetSurface()
     }
 
     // MARK: - Full image overlay

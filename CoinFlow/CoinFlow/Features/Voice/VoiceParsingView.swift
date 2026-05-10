@@ -15,30 +15,29 @@ struct VoiceParsingView: View {
     enum Stage { case asr, parsing }
 
     var body: some View {
-        ZStack {
-            Color.appSheetCanvas.ignoresSafeArea()
-            VStack(spacing: NotionTheme.space7) {
-                tierBadge
-                ProgressView()
-                    .controlSize(.large)
-                    .scaleEffect(1.4)
-                    .tint(Color.inkSecondary)
-                    .padding(.top, NotionTheme.space7)
-                VStack(spacing: NotionTheme.space3) {
-                    Text(primaryTitle)
-                        .font(NotionFont.h3())
-                        .foregroundStyle(Color.inkPrimary)
-                    Text(subtitleText)
-                        .font(NotionFont.small())
-                        .foregroundStyle(Color.inkSecondary)
-                }
-                stageList
-                    .padding(.top, NotionTheme.space7)
-                    .padding(.horizontal, NotionTheme.space6)
-                Spacer()
+        VStack(spacing: NotionTheme.space7) {
+            tierBadge
+            ProgressView()
+                .controlSize(.large)
+                .scaleEffect(1.4)
+                .tint(Color.inkSecondary)
+                .padding(.top, NotionTheme.space7)
+            VStack(spacing: NotionTheme.space3) {
+                Text(primaryTitle)
+                    .font(NotionFont.h3())
+                    .foregroundStyle(Color.inkPrimary)
+                Text(subtitleText)
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.inkSecondary)
             }
-            .padding(.top, NotionTheme.space8)
+            stageList
+                .padding(.top, NotionTheme.space7)
+                .padding(.horizontal, NotionTheme.space6)
+            Spacer()
         }
+        .padding(.top, NotionTheme.space8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .themedSheetSurface()
     }
 
     private var primaryTitle: String {

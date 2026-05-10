@@ -54,15 +54,26 @@ struct SummaryFloatingCard: View {
                     .padding(NotionTheme.space5)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.canvasBG)
-        )
+        .background(cardBackground)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
                 .stroke(Color.border, lineWidth: NotionTheme.borderWidth)
         )
         .shadow(color: Color.black.opacity(0.4), radius: 30, x: 0, y: 12)
+    }
+
+    /// 浮窗外层大卡背景：
+    /// - liquidGlass：`.ultraThinMaterial` 真玻璃，滑出底层玻璃背景 + dim 黑遮罩
+    /// - notion / darkLiquid：维持 `Color.canvasBG` 以套历史行为
+    @ViewBuilder
+    private var cardBackground: some View {
+        if LGAThemeStore.shared.kind == .liquidGlass {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(.ultraThinMaterial)
+        } else {
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color.canvasBG)
+        }
     }
 
     // MARK: - Header
@@ -84,9 +95,21 @@ struct SummaryFloatingCard: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.inkSecondary)
                     .frame(width: 32, height: 32)
-                    .background(Circle().fill(Color.surfaceOverlay))
+                    .background(closeButtonBackground)
             }
             .accessibilityLabel("关闭总结浮窗")
+        }
+    }
+
+    /// 关闭 ✕ 圆按钮背景：避免与外层 `.ultraThinMaterial` 双层叠加，
+    /// liquidGlass 下用半透白 `Color.white.opacity(0.10)` 代替玻璃感
+    @ViewBuilder
+    private var closeButtonBackground: some View {
+        if LGAThemeStore.shared.kind == .liquidGlass {
+            Circle().fill(Color.white.opacity(0.10))
+                .overlay(Circle().stroke(Color.white.opacity(0.14), lineWidth: 0.5))
+        } else {
+            Circle().fill(Color.surfaceOverlay)
         }
     }
 
@@ -220,6 +243,10 @@ private extension SummaryFloatingCard {
                     .markdownMargin(top: 12, bottom: 12)
             }
             // 表格单元格：row=0 是表头加粗 + 底色；偶数行淡色斑马纹
+            //
+            // liquidGlass 主题下：为避免与外层玻璃卡的 `.ultraThinMaterial` 双层模糊（叠加效果不可预测且能耗），
+            // 改用半透白叠加：表头 10%、斑马纹 4%，能创造与玻璃类似的"柔光层"观感。
+            // notion / darkLiquid 主题下：维持原 `Color.surfaceOverlay` 行为。
             .tableCell { configuration in
                 configuration.label
                     .markdownTextStyle {
@@ -231,18 +258,34 @@ private extension SummaryFloatingCard {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        configuration.row == 0
-                            ? Color.surfaceOverlay
-                            : (configuration.row % 2 == 0
-                               ? Color.surfaceOverlay.opacity(0.4)
-                               : Color.clear)
-                    )
+                    .background(Self.tableCellBackground(row: configuration.row))
                     .overlay(
                         Rectangle()
                             .stroke(Color.border.opacity(0.6), lineWidth: NotionTheme.borderWidth)
                     )
                     .fixedSize(horizontal: false, vertical: true)
             }
+    }
+
+    /// 表格单元格背景解析（按主题分支）
+    @ViewBuilder
+    static func tableCellBackground(row: Int) -> some View {
+        if LGAThemeStore.shared.kind == .liquidGlass {
+            if row == 0 {
+                Color.white.opacity(0.10)
+            } else if row % 2 == 0 {
+                Color.white.opacity(0.04)
+            } else {
+                Color.clear
+            }
+        } else {
+            if row == 0 {
+                Color.surfaceOverlay
+            } else if row % 2 == 0 {
+                Color.surfaceOverlay.opacity(0.4)
+            } else {
+                Color.clear
+            }
+        }
     }
 }

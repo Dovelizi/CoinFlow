@@ -52,7 +52,7 @@ struct VoiceSummaryView: View {
             }
             bottomBar
         }
-        .background(Color.appSheetCanvas.ignoresSafeArea())
+        .themedSheetSurface()
     }
 
     // MARK: - Nav

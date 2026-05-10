@@ -151,7 +151,7 @@ struct VoiceWizardContainerView: View {
                 .padding(.top, NotionTheme.space5)
             NewRecordModal(onSaved: { _ in dismiss() })
         }
-        .background(Color.appSheetCanvas.ignoresSafeArea())
+        .themedSheetSurface()
     }
 
     private func failureView(_ msg: String) -> some View {
@@ -223,7 +223,7 @@ struct VoiceWizardContainerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.appSheetCanvas.ignoresSafeArea())
+        .themedSheetSurface()
     }
 }
 
@@ -235,9 +235,21 @@ struct VoiceWizardContainerView: View {
 //
 // API 可用性：.presentationBackground 需 iOS 16.4+；项目 deployment target 16.0，
 // 对 16.0~16.3 设备降级为默认 sheet 背景（不虚化，但不影响功能）。
+//
+// 主题感知：
+//   - liquidGlass 主题下，由 .themedSheetSurface() 内部叠加 LiquidGlassBackground
+//     并通过 .presentationBackground(.clear) 透明化 sheet 容器，让真玻璃效果
+//     从 sheet 内层渗透出来；这里跳过 .ultraThinMaterial，避免双重模糊冲淡折射
+//   - notion / darkLiquid 主题保持原 ultraThinMaterial 行为
 private struct BlurredSheetBackground: ViewModifier {
+    @ObservedObject private var store = LGAThemeStore.shared
+
     func body(content: Content) -> some View {
-        if #available(iOS 16.4, *) {
+        if store.kind == .liquidGlass {
+            // 玻璃主题：让 .themedSheetSurface 内部的 .presentationBackground(.clear)
+            // 主导，避免与 .ultraThinMaterial 叠加成重雾
+            content
+        } else if #available(iOS 16.4, *) {
             content.presentationBackground(.ultraThinMaterial)
         } else {
             content

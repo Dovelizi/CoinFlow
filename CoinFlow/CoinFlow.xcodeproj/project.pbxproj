@@ -85,6 +85,7 @@
 		83121E5956056705448C27C8 /* BillsSummaryPromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F1629265D844F88F9C301E /* BillsSummaryPromptBuilder.swift */; };
 		86B6E87AD1096DBFCF68812B /* AudioRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF71E8B515CD8EB2DF38C005 /* AudioRecorder.swift */; };
 		8738CA177A5E9C86AC3990E7 /* DatabaseManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 399C1C252C924928D113D6C9 /* DatabaseManager.swift */; };
+		8B1F2E3D4C5A6B7E8F9D0123 /* LiquidGlassRealTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* LiquidGlassRealTheme.swift */; };
 		8E881F2C673A4BD62B48C201 /* CoinFlowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DFA4E64EA60889292328BB5 /* CoinFlowApp.swift */; };
 		9402A86F5772E4FB9E0231D0 /* BiometricLockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = ABA1C389ED0915089894BA47 /* BiometricLockView.swift */; };
 		96C2CFF41344D048C9DDEAB5 /* Config.example.plist in Resources */ = {isa = PBXBuildFile; fileRef = 886AF4F9BDDAB3973864F361 /* Config.example.plist */; };
@@ -103,6 +104,8 @@
 		A99BA54712BF230E37C00101 /* Record.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7D7980932174930672007A5 /* Record.swift */; };
 		A9D34932834356BEAE9D011B /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = 4590994D0959ECB11B346990 /* MarkdownUI */; };
 		AA8BF3A30BFE29FA2BA9DB12 /* SyncTrigger.swift in Sources */ = {isa = PBXBuildFile; fileRef = F70DEADDF3FB4E2B43EEBE3B /* SyncTrigger.swift */; };
+		AAAA000000000000000000B1 /* KeyboardAccessoryToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000A1 /* KeyboardAccessoryToolbar.swift */; };
+		AAAA000000000000000000B2 /* NoteTextFieldUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000A2 /* NoteTextFieldUIKit.swift */; };
 		ADC8BE59F57E04547BDD4F81 /* ScreenshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A197BE2D4DCAABEE10216EF6 /* ScreenshotStore.swift */; };
 		AE7F173DAF3D58717632123E /* LLMTextClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1872B06E551C676D320BD0B /* LLMTextClient.swift */; };
 		AEAA3F48507C9E34FC7D99AE /* RecordsLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 53AD80DAC697889D78030BA6 /* RecordsLayout.swift */; };
@@ -139,8 +142,6 @@
 		F4403EDD8BB3D7DA493FF9B2 /* SQLBinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 310E766562A661E1E5976533 /* SQLBinder.swift */; };
 		F48DD621C42F723B54649E79 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9494CBBE2E21BB0F655FBB12 /* MainTabView.swift */; };
 		F7A67816A7A8065FF7755C51 /* AmountTextFieldUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 511DC26C60C306BD61494294 /* AmountTextFieldUIKit.swift */; };
-		AAAA000000000000000000B1 /* KeyboardAccessoryToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000A1 /* KeyboardAccessoryToolbar.swift */; };
-		AAAA000000000000000000B2 /* NoteTextFieldUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000A2 /* NoteTextFieldUIKit.swift */; };
 		FB0D1ECF5A46FBF9EE636DBD /* VoiceWizardStepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9359C156388F8FEBBA7AB3F9 /* VoiceWizardStepView.swift */; };
 /* End PBXBuildFile section */
 
@@ -200,8 +201,6 @@
 		4C613C49EBF5E2040D2C33D7 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
 		4DFA4E64EA60889292328BB5 /* CoinFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoinFlowApp.swift; sourceTree = "<group>"; };
 		511DC26C60C306BD61494294 /* AmountTextFieldUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmountTextFieldUIKit.swift; sourceTree = "<group>"; };
-		AAAA000000000000000000A1 /* KeyboardAccessoryToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardAccessoryToolbar.swift; sourceTree = "<group>"; };
-		AAAA000000000000000000A2 /* NoteTextFieldUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTextFieldUIKit.swift; sourceTree = "<group>"; };
 		529AF9C4E6B7405E81638EE7 /* MerchantBrand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantBrand.swift; sourceTree = "<group>"; };
 		53AD80DAC697889D78030BA6 /* RecordsLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordsLayout.swift; sourceTree = "<group>"; };
 		54DFBE2F01ACB3DB1ABAD284 /* NotionTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionTheme.swift; sourceTree = "<group>"; };
@@ -241,11 +240,14 @@
 		9F224540658D1B4C416369D2 /* CategoryRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryRepository.swift; sourceTree = "<group>"; };
 		9F3444257D5D45919F258880 /* NotionColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionColor.swift; sourceTree = "<group>"; };
 		A197BE2D4DCAABEE10216EF6 /* ScreenshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenshotStore.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* LiquidGlassRealTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiquidGlassRealTheme.swift; sourceTree = "<group>"; };
 		A3CD89E85528C8ACBA34E607 /* VoiceWizardViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceWizardViewModel.swift; sourceTree = "<group>"; };
 		A4C664E42BE31ADAB06A9DE3 /* MainCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainCoordinator.swift; sourceTree = "<group>"; };
 		A63502C54C37E92AB2123D32 /* RecordRepositorySyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecordRepositorySyncTests.swift; path = CoinFlowTests/RecordRepositorySyncTests.swift; sourceTree = SOURCE_ROOT; };
 		A72E59182D03DA7DF3EDCA6A /* RecordGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordGridView.swift; sourceTree = "<group>"; };
 		A7DFB58A6DF14B1ED9FFF945 /* CoinFlowTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = CoinFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AAAA000000000000000000A1 /* KeyboardAccessoryToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardAccessoryToolbar.swift; sourceTree = "<group>"; };
+		AAAA000000000000000000A2 /* NoteTextFieldUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTextFieldUIKit.swift; sourceTree = "<group>"; };
 		ABA1C389ED0915089894BA47 /* BiometricLockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricLockView.swift; sourceTree = "<group>"; };
 		AC0C90780C5EEC0BF684C399 /* DefaultSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultSeeder.swift; sourceTree = "<group>"; };
 		AE9B735B58CFEEAE2DBAC986 /* BillsSummaryRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillsSummaryRepository.swift; sourceTree = "<group>"; };
@@ -643,6 +645,7 @@
 				E375AAED12CBA1A0765E60AB /* AmountTintStore.swift */,
 				00FE59DA4F42AC568E1ED616 /* KeyboardDoneToolbar.swift */,
 				6A7CFF59C24E5193C97A5B36 /* LiquidGlassATheme.swift */,
+				A1B2C3D4E5F60718293A4B5C /* LiquidGlassRealTheme.swift */,
 				9F3444257D5D45919F258880 /* NotionColor.swift */,
 				8C7B1CE25DF0574BF0B4B73D /* NotionFont.swift */,
 				EB0B79A35A811871B2B1AC16 /* NotionTheme+Aliases.swift */,
@@ -942,6 +945,7 @@
 				AA8BF3A30BFE29FA2BA9DB12 /* SyncTrigger.swift in Sources */,
 				131C970FAC60B648EE5513B8 /* AppState.swift in Sources */,
 				7020521C59BA380CF5DB8F68 /* LiquidGlassATheme.swift in Sources */,
+				8B1F2E3D4C5A6B7E8F9D0123 /* LiquidGlassRealTheme.swift in Sources */,
 				42D99AA5B35A19232439A6E7 /* TabBarVisibility.swift in Sources */,
 				9E7186ADE61367CC7A7CDE04 /* InteractivePopEnabler.swift in Sources */,
 				2E8F3298863E5A9CE8E0A99A /* CameraPicker.swift in Sources */,
@@ -1062,7 +1066,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleLocalizations = "zh-Hans en";
-				INFOPLIST_KEY_NSCameraUsageDescription = "用于拍摄账单小票并识别金额分类（未来版本启用）。";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "启用 Face ID 启动鉴权后，App 冷启动时需要您验证身份才能查看流水。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于录制您口述的账单内容；音频识别完成即从设备删除，不上传到服务器。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于从相册选择账单截图进行识别（未来版本启用）。";
@@ -1121,7 +1124,6 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleLocalizations = "zh-Hans en";
-				INFOPLIST_KEY_NSCameraUsageDescription = "用于拍摄账单小票并识别金额分类（未来版本启用）。";
 				INFOPLIST_KEY_NSFaceIDUsageDescription = "启用 Face ID 启动鉴权后，App 冷启动时需要您验证身份才能查看流水。";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "用于录制您口述的账单内容；音频识别完成即从设备删除，不上传到服务器。";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "用于从相册选择账单截图进行识别（未来版本启用）。";

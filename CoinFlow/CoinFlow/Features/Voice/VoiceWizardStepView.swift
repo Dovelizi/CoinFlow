@@ -139,26 +139,24 @@ struct VoiceWizardStepView: View {
     }
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                navigationBar
-                progressHeader
-                ScrollView {
-                    VStack(spacing: NotionTheme.space7) {
-                        amountSection
-                        directionSection
-                        fieldRows
-                        noteSection
-                    }
-                    .padding(.horizontal, NotionTheme.space6)
-                    .padding(.top, NotionTheme.space6)
-                    .padding(.bottom, NotionTheme.space9)
+        VStack(spacing: 0) {
+            navigationBar
+            progressHeader
+            ScrollView {
+                VStack(spacing: NotionTheme.space7) {
+                    amountSection
+                    directionSection
+                    fieldRows
+                    noteSection
                 }
-                bottomBar
+                .padding(.horizontal, NotionTheme.space6)
+                .padding(.top, NotionTheme.space6)
+                .padding(.bottom, NotionTheme.space9)
             }
-            clampedToastView
+            bottomBar
         }
-        .background(Color.appSheetCanvas.ignoresSafeArea())
+        .overlay(clampedToastView)
+        .themedSheetSurface()
         // 键盘「完成」按钮：由 AmountTextFieldUIKit / NoteTextFieldUIKit 自身的
         // inputAccessoryView 提供（系统级，sheet 嵌套下也稳定）
         // 进入页面 / 切笔时，把 vm.currentBill.amount 同步到本地编辑文本

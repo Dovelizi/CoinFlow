@@ -20,21 +20,19 @@ struct CategoryPickerSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                Color.appSheetCanvas.ignoresSafeArea()
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: NotionTheme.space5) {
-                        ForEach(categories) { cat in
-                            cell(cat)
-                                .onTapGesture {
-                                    onSelect(cat)
-                                    dismiss()
-                                }
-                        }
+            ScrollView {
+                LazyVGrid(columns: columns, spacing: NotionTheme.space5) {
+                    ForEach(categories) { cat in
+                        cell(cat)
+                            .onTapGesture {
+                                onSelect(cat)
+                                dismiss()
+                            }
                     }
-                    .padding(NotionTheme.space5)
                 }
+                .padding(NotionTheme.space5)
             }
+            .scrollContentBackground(.hidden)
             .navigationTitle("选择分类")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -45,6 +43,7 @@ struct CategoryPickerSheet: View {
                 }
             }
         }
+        .themedSheetSurface()
     }
 
     private func cell(_ cat: Category) -> some View {

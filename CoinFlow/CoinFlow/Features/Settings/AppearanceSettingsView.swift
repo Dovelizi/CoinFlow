@@ -132,46 +132,83 @@ struct AppearanceSettingsView: View {
 
     private var themeSection: some View {
         SettingsSection(title: "外观", icon: "paintpalette", wrapInCard: false) {
-            HStack(spacing: NotionTheme.space4) {
+            VStack(spacing: NotionTheme.space4) {
                 themeCard(
+                    kind: .notion,
                     title: "Dark Notion",
-                    subtitle: "实色扁平",
-                    isSelected: !themeStore.isEnabled
-                ) {
-                    themeStore.setEnabled(false, animated: true)
-                }
+                    subtitle: "实色扁平·遵循 Notion 设计语言",
+                    iconSystemName: "square.grid.2x2"
+                )
                 themeCard(
+                    kind: .darkLiquid,
                     title: "Dark Liquid",
-                    subtitle: "深炭灰",
-                    isSelected: themeStore.isEnabled
-                ) {
-                    themeStore.setEnabled(true, animated: true)
-                }
+                    subtitle: "深炭灰实色·低干扰阅读",
+                    iconSystemName: "moon.fill"
+                )
+                themeCard(
+                    kind: .liquidGlass,
+                    title: "Liquid Glass",
+                    subtitle: "iOS 26 真·液态玻璃·跟随系统亮暗",
+                    iconSystemName: "sparkles"
+                )
             }
         }
     }
 
     @ViewBuilder
-    private func themeCard(title: String,
+    private func themeCard(kind: AppTheme,
+                           title: String,
                            subtitle: String,
-                           isSelected: Bool,
-                           action: @escaping () -> Void) -> some View {
-        let isLGA = themeStore.isEnabled
+                           iconSystemName: String) -> some View {
+        let isSelected = themeStore.kind == kind
+        let isCurrentLGA = themeStore.kind == .darkLiquid
         let radius: CGFloat = 14
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.custom("PingFangSC-Semibold", size: 17))
-                    .foregroundStyle(isLGA ? Color.white : Color.inkPrimary)
-                Text(subtitle)
-                    .font(NotionFont.small())
-                    .foregroundStyle(isLGA ? LGATheme.textSecondary : Color.inkSecondary)
+
+        Button {
+            themeStore.setKind(kind, animated: true)
+        } label: {
+            HStack(spacing: NotionTheme.space5) {
+                // 左侧图标
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(themeIconBackground(for: kind))
+                    Image(systemName: iconSystemName)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(themeIconForeground(for: kind))
+                }
+                .frame(width: 40, height: 40)
+
+                // 中间文本
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.custom("PingFangSC-Semibold", size: 16))
+                        .foregroundStyle(isCurrentLGA ? Color.white : Color.inkPrimary)
+                    Text(subtitle)
+                        .font(NotionFont.small())
+                        .foregroundStyle(
+                            isCurrentLGA ? LGATheme.textSecondary : Color.inkSecondary
+                        )
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 0)
+
+                // 右侧选中态
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(LGATheme.accentSelection)
+                } else {
+                    Image(systemName: "circle")
+                        .font(.system(size: 22, weight: .regular))
+                        .foregroundStyle(Color.inkTertiary)
+                }
             }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, NotionTheme.space5)
             .padding(.vertical, NotionTheme.space5)
             .background(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(isLGA
+                    .fill(isCurrentLGA
                           ? LGATheme.cardFill
                           : (isSelected
                              ? LGATheme.accentSelection.opacity(0.08)
@@ -188,6 +225,26 @@ struct AppearanceSettingsView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(title) 主题\(isSelected ? "，已选中" : "")")
+    }
+
+    /// 主题卡片左侧图标背景色
+    private func themeIconBackground(for kind: AppTheme) -> Color {
+        switch kind {
+        case .notion:       return Color.accentBlue.opacity(0.12)
+        case .darkLiquid:   return Color.black.opacity(0.85)
+        case .liquidGlass:
+            // Liquid Glass 用 accent + 紫的混合，呼应玻璃折射感
+            return Color(red: 0.36, green: 0.42, blue: 0.95).opacity(0.85)
+        }
+    }
+
+    /// 主题卡片左侧图标前景色
+    private func themeIconForeground(for kind: AppTheme) -> Color {
+        switch kind {
+        case .notion:       return Color.accentBlue
+        case .darkLiquid:   return Color.white
+        case .liquidGlass:  return Color.white
+        }
     }
 
     // MARK: - 金额颜色段
