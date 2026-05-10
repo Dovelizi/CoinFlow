@@ -47,7 +47,7 @@ struct AppearanceSettingsView: View {
                     .foregroundStyle(Color.inkTertiary)
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text("¥")
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .font(.system(size: 42 * AmountSymbolStyle.symbolScale, weight: .bold, design: .rounded))
                         .foregroundStyle(amountTint.incomeColor)
                     Text("4,937")
                         .font(.system(size: 42, weight: .bold, design: .rounded).monospacedDigit())

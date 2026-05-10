@@ -177,16 +177,25 @@ struct StatsHubView: View {
                 .font(.custom("PingFangSC-Regular", size: 13))
                 .foregroundStyle(Color.inkTertiary)
 
-            // 主数字 — 居中；符号与数字间距收紧
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text("¥")
-                    .font(.system(size: 20, weight: .regular, design: .rounded))
-                    .foregroundStyle(toneForNet)
-                Text(StatsFormat.intGrouped(vm.monthlyNet < 0 ? -vm.monthlyNet : vm.monthlyNet))
-                    .font(.system(size: 36, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(toneForNet)
-            }
-            .padding(.top, 4)
+            // 主数字 — 居中；¥ 与数字字重/字体/比例统一（全局规则 §AmountSymbolStyle）
+            // 用 attributed string 拼接 → minimumScaleFactor 才能让 ¥+数字整组等比例缩小
+            let digitSize: CGFloat = 36
+            let symbolSize = digitSize * AmountSymbolStyle.symbolScale
+            let amountStr = StatsFormat.intGrouped(vm.monthlyNet < 0 ? -vm.monthlyNet : vm.monthlyNet)
+            let heroAttr: AttributedString = {
+                var a = AttributedString("¥")
+                a.font = .system(size: symbolSize, weight: .bold, design: .rounded)
+                a.foregroundColor = toneForNet
+                var n = AttributedString(amountStr)
+                n.font = .system(size: digitSize, weight: .bold, design: .rounded).monospacedDigit()
+                n.foregroundColor = toneForNet
+                a.append(n)
+                return a
+            }()
+            Text(heroAttr)
+                .amountGroupAutoFit(scaleFloor: 0.4)   // 36pt → 最小 ~14pt
+                .padding(.top, 4)
+                .padding(.horizontal, NotionTheme.space5)
 
             // 极淡水平 divider 隔开 hero 与 KPI 三栏
             Rectangle()

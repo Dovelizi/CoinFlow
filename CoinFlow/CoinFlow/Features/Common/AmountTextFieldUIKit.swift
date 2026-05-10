@@ -75,8 +75,11 @@ struct AmountTextFieldUIKit: UIViewRepresentable {
         tf.font = font
         tf.textColor = textColor
         tf.textAlignment = alignment
-        tf.adjustsFontSizeToFitWidth = true
-        tf.minimumFontSize = font.pointSize * 0.5
+        // ⚠️ 禁用 UIKit 自动缩字号：
+        //   该属性会在文本极短（如单字符 "2"）时按某种内部度量把字号缩到 minimumFontSize，
+        //   导致 ¥（SwiftUI Text，不受影响）维持原字号、数字反而被压扁，视觉上 ¥ 比数字还大。
+        //   字号缩放已由上层 AmountFontScale 按数值档位主动处理，UIKit 这层不要再插手。
+        tf.adjustsFontSizeToFitWidth = false
         tf.attributedPlaceholder = NSAttributedString(
             string: placeholder,
             attributes: [
@@ -86,6 +89,13 @@ struct AmountTextFieldUIKit: UIViewRepresentable {
         )
         tf.text = text
         tf.isEnabled = isEnabled
+        // 系统级「完成」工具栏：作为 textField 的 inputAccessoryView，
+        // 由 UIKit 自动定位在键盘正上方，不依赖坐标系/sheet 容器，绝对稳定。
+        // .decimalPad 键盘自身没有 return/done 键，必须靠 accessoryView 提供收起入口。
+        tf.inputAccessoryView = KeyboardAccessoryToolbar.make(
+            target: context.coordinator,
+            action: #selector(Coordinator.dismissKeyboard)
+        )
         // 让 UITextField 紧贴内容宽度：hugging 高（不愿扩展），compression resistance 高（不愿压缩）。
         // 这样配合 SwiftUI .fixedSize(horizontal: true)，TextField 宽度由 text/placeholder 真实宽度决定，
         // 不会被父 HStack 拉伸成全宽 → ¥ + 数字 整组才能被 Spacer 推到中间居中。
@@ -173,6 +183,14 @@ struct AmountTextFieldUIKit: UIViewRepresentable {
             if parent.text != s {
                 parent.text = s
             }
+        }
+
+        /// inputAccessoryView「完成」按钮：收起键盘
+        @objc func dismissKeyboard() {
+            UIApplication.shared.sendAction(
+                #selector(UIResponder.resignFirstResponder),
+                to: nil, from: nil, for: nil
+            )
         }
 
         func textFieldDidBeginEditing(_ textField: UITextField) {

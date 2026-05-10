@@ -121,5 +121,5 @@ enum AmountInputGate {
     }
 
     /// 彩蛋 toast 文案
-    static let dreamToastText = "别做梦了，你不会有一个小目标的"
+    static let dreamToastText = "吹🐮🍺呢，你会有一个小目标？？？"
 }

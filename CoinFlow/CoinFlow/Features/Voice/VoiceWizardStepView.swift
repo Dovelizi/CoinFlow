@@ -15,16 +15,12 @@ import SwiftUI
 
 struct VoiceWizardStepView: View {
 
-    /// 键盘焦点枚举（官方最佳实践）
-    private enum Field: Hashable { case amount, note }
-
     @ObservedObject var vm: VoiceWizardViewModel
 
     /// 结束整个向导（父 Container 关掉 sheet）
     let onExit: () -> Void
 
     @State private var showCategoryPicker = false
-    @FocusState private var focusedField: Field?
 
     /// 金额输入框的当前文本（与 vm.currentBill.amount 双向同步）。
     /// 设计原因：vm.currentBill.amount 是 Decimal?，View 层 TextField 需要 String，
@@ -163,8 +159,8 @@ struct VoiceWizardStepView: View {
             clampedToastView
         }
         .background(Color.appSheetCanvas.ignoresSafeArea())
-        // 自绘键盘「完成」工具栏（替代原生 .toolbar { .keyboard }）
-        .keyboardDoneToolbar()
+        // 键盘「完成」按钮：由 AmountTextFieldUIKit / NoteTextFieldUIKit 自身的
+        // inputAccessoryView 提供（系统级，sheet 嵌套下也稳定）
         // 进入页面 / 切笔时，把 vm.currentBill.amount 同步到本地编辑文本
         .onAppear { syncAmountInputFromVM() }
         .onChange(of: vm.currentIndex) { _ in syncAmountInputFromVM() }
@@ -589,11 +585,16 @@ struct VoiceWizardStepView: View {
                     .foregroundStyle(Color.inkTertiary)
             }
             .padding(.leading, 4)
-            TextField("（无备注）", text: noteBinding, axis: .vertical)
-                .lineLimit(2...6)
-                .font(NotionFont.body())
-                .foregroundStyle(Color.inkPrimary)
-                .focused($focusedField, equals: .note)
+            // UIKit 包装的多行备注输入，键盘上方带「完成」按钮（inputAccessoryView）
+            NoteTextFieldUIKit(
+                text: noteBinding,
+                placeholder: "（无备注）",
+                font: NotionFont.bodyUIKit(),
+                textColor: UIColor(Color.inkPrimary),
+                placeholderColor: UIColor(Color.inkTertiary),
+                minLines: 2,
+                maxLines: 6
+            )
                 .padding(.horizontal, NotionTheme.space5)
                 .padding(.vertical, 12)
                 .frame(minHeight: 44, alignment: .top)

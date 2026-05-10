@@ -10,14 +10,10 @@ import SwiftUI
 
 struct NewRecordModal: View {
 
-    /// 键盘焦点枚举（官方最佳实践：单一 FocusState + 外层单一 toolbar）
-    private enum Field: Hashable { case amount, note }
-
     @StateObject private var vm = NewRecordViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var showCategoryPicker = false
     @State private var showTimePicker = false
-    @FocusState private var focusedField: Field?
 
     /// 金额拦截彩蛋 toast：当 vm.amountClampedAt 变化时弹一次。
     /// 文案是金额超限的轻吐槽，用 DispatchWorkItem 控制 1.6s 自动消失。
@@ -51,8 +47,8 @@ struct NewRecordModal: View {
             }
             clampedToastView
         }
-        // 自绘键盘「完成」工具栏（替代原生 .toolbar { .keyboard }）
-        .keyboardDoneToolbar()
+        // 键盘「完成」按钮：由 AmountTextFieldUIKit / NoteTextFieldUIKit 自身的
+        // inputAccessoryView 提供（系统级，自动定位在键盘正上方，绝对稳定）
         // 金额拦截 → 弹彩蛋 toast（每次新拦截都重置 1.6s 显示）
         .onChange(of: vm.amountClampedAt) { _ in
             showClampedToast()
@@ -99,7 +95,7 @@ struct NewRecordModal: View {
     private func showClampedToast() {
         // 仅对"超过 1 亿"弹彩蛋；小数位/整数位/非法字符走红字提示就够了
         guard vm.amountClampReason == .overLimit else { return }
-        let text = "别做梦了，你不会有一个小目标的"
+        let text = "吹🐮🍺呢，你会有一个小目标？？？"
         withAnimation(.easeOut(duration: 0.18)) {
             clampedToastText = text
         }
@@ -393,16 +389,21 @@ struct NewRecordModal: View {
                 .foregroundStyle(Color.inkSecondary)
                 .padding(.leading, NotionTheme.space2)
 
-            TextField("点击添加备注…", text: $vm.note, axis: .vertical)
-                .lineLimit(2...5)
-                .font(NotionFont.body())
-                .foregroundStyle(Color.inkPrimary)
-                .focused($focusedField, equals: .note)
-                .padding(NotionTheme.space5)
-                .background(
-                    RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
-                        .fill(Color.hoverBg)
-                )
+            // 用 UIKit 包装的 NoteTextFieldUIKit，键盘上方带「完成」按钮（inputAccessoryView）
+            NoteTextFieldUIKit(
+                text: $vm.note,
+                placeholder: "点击添加备注…",
+                font: NotionFont.bodyUIKit(),
+                textColor: UIColor(Color.inkPrimary),
+                placeholderColor: UIColor(Color.inkTertiary),
+                minLines: 2,
+                maxLines: 5
+            )
+            .padding(NotionTheme.space5)
+            .background(
+                RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
+                    .fill(Color.hoverBg)
+            )
         }
     }
 

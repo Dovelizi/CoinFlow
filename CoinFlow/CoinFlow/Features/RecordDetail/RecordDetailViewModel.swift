@@ -4,7 +4,8 @@
 //  详情/编辑 VM：
 //  - 可编辑：金额 / 分类 / 备注（核心 3 项，§5.5.9 字段编辑约束）
 //  - 不可编辑：发生时间 / 来源 / 同步状态 / 账本（只读元信息）
-//  - 实时保存：失焦/选中分类即触发 commit；保存失败保持 sheet 打开
+//  - 显式保存：用户点顶部「保存」按钮才 commit；保存失败保持 sheet 打开
+//    （旧版「失焦/选中即 commit」已废弃，避免用户对落库时机心智模糊）
 
 import Foundation
 import SwiftUI
@@ -118,13 +119,32 @@ final class RecordDetailViewModel: ObservableObject {
 
     // MARK: - Commits
 
-    /// 任意字段变更后触发；将组装新 Record 并 update。
-    /// 任何编辑都重置 syncStatus = .pending（与 §5.5.9 实时保存机制对齐）。
-    func commit() {
+    /// 是否相比原始记录有未保存的修改（脏标记）。
+    /// 用于「保存」按钮 enable 状态、关闭时是否需要二次确认。
+    var isDirty: Bool {
+        // 金额：比较解析后的 Decimal（容错末尾 0、空白）
+        if parsedAmount != original.amount { return true }
+        // 分类：比较 id
+        if selectedCategory?.id != original.categoryId { return true }
+        // 备注：空字符串与 nil 视为等价
+        let normalizedNote = note.isEmpty ? nil : note
+        if normalizedNote != original.note { return true }
+        return false
+    }
+
+    /// 输入是否合法（用于「保存」按钮 enable 状态的另一道闸）。
+    var canSave: Bool {
+        parsedAmount != nil && selectedCategory != nil
+    }
+
+    /// 显式保存：组装新 Record 并 update。返回是否成功。
+    /// 任何编辑都重置 syncStatus = .pending（与 §5.5.9 一致）。
+    @discardableResult
+    func commit() -> Bool {
         guard let amount = parsedAmount,
               let cat = selectedCategory else {
             saveError = "金额或分类无效"
-            return
+            return false
         }
         var updated = original
         updated.amount = amount
@@ -138,15 +158,17 @@ final class RecordDetailViewModel: ObservableObject {
             try SQLiteRecordRepository.shared.update(updated)
             saveError = nil
             SyncTrigger.fire(reason: "recordDetail.save")
+            return true
         } catch {
             saveError = error.localizedDescription
+            return false
         }
     }
 
-    /// 选择分类（包括跨方向？M3.3 仅同方向切换；跨方向需要先用「删除+重建」表达）
+    /// 选择分类（仅更新本地 state，不落库；等用户点保存）。
+    /// M3.3 仅同方向切换；跨方向需要先用「删除+重建」表达。
     func selectCategory(_ cat: Category) {
         selectedCategory = cat
-        commit()
     }
 
     /// 删除。

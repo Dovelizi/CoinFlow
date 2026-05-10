@@ -219,14 +219,17 @@ struct HomeMainView: View {
                         .foregroundStyle(Color.inkSecondary)
                 } else {
                     // 用单个 Text 拼接 ¥ 与数字 → minimumScaleFactor 才能整组等比例缩小
-                    // ¥ 32pt + 数字 56pt 混用 baseline 通过 attributed string 实现
+                    // ¥ 与数字字重统一 .bold（全局规则 §AmountSymbolStyle）
+                    // 字号 ¥ = 56 × 0.64 ≈ 36，与统计页 hero 一致
                     let amountStr = AmountFormatter.display(vm.monthlyNet < 0 ? -vm.monthlyNet : vm.monthlyNet)
+                    let digitSize: CGFloat = 56
+                    let symbolSize = digitSize * AmountSymbolStyle.symbolScale
                     let attr: AttributedString = {
                         var a = AttributedString("¥")
-                        a.font = .system(size: 32, weight: .semibold, design: .rounded)
+                        a.font = .system(size: symbolSize, weight: .bold, design: .rounded)
                         a.foregroundColor = netColor
                         var n = AttributedString(amountStr)
-                        n.font = .system(size: 56, weight: .bold, design: .rounded).monospacedDigit()
+                        n.font = .system(size: digitSize, weight: .bold, design: .rounded).monospacedDigit()
                         n.foregroundColor = netColor
                         a.append(n)
                         return a

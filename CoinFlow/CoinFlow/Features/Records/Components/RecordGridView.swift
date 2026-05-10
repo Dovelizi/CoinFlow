@@ -59,20 +59,36 @@ struct RecordGridView: View {
                 }
             }
 
-            // 金额：30pt 居中；全局规则：超宽等比例缩小不截断
-            Text("\(kind == .expense ? "-" : "+")\(AmountFormatter.display(record.amount))")
-                .font(NotionFont.amountBold(size: 30))
-                .foregroundStyle(DirectionColor.amountForeground(kind: kind))
-                .amountAutoFit(base: 30)
-                .frame(maxWidth: .infinity)
+            // 金额：30pt 居中。
+            // 关键：用 Color.clear 占位并 overlay 渲染 Text —— 这样金额的「固有宽度」
+            // 不会反向把 LazyVGrid 的列宽撑开（极大金额场景会让该列变宽、邻列被挤窄）。
+            // 高度由内层 Text 撑起；overlay 不参与父级 sizing，宽度严格等于父容器（卡片）。
+            Color.clear
+                .frame(height: 30 * 1.2)
+                .overlay(
+                    Text("\(kind == .expense ? "-" : "+")\(AmountFormatter.display(record.amount))")
+                        .font(NotionFont.amountBold(size: 30))
+                        .foregroundStyle(DirectionColor.amountForeground(kind: kind))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.4)
+                        .allowsTightening(true)
+                        .padding(.horizontal, 4)
+                )
 
-            // 备注：居中（仅有内容时显示）
+            // 备注：居中（无内容时渲染等高占位，保证同行卡片高度一致）
             if let n = record.note, !n.isEmpty {
                 Text(n)
                     .font(NotionFont.small())
                     .foregroundStyle(Color.inkTertiary)
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
+            } else {
+                // 占位：与备注同字号同行高，仅用于撑高，视觉不可见
+                Text(" ")
+                    .font(NotionFont.small())
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityHidden(true)
             }
         }
         .padding(NotionTheme.space5)

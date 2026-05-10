@@ -29,6 +29,30 @@
 
 import SwiftUI
 
+// MARK: - 全局 ¥ 符号样式规则
+//
+// 规则（2026-05-10 用户决策）：
+//   巨字场景下 ¥ 与主数字混排时，必须满足三条统一规则：
+//     1) 字号比例：¥.size = digit.size × symbolScale（0.64）
+//     2) 字重一致：¥.weight = digit.weight
+//     3) 字体设计一致：¥.design = digit.design = .rounded
+//
+// 适用范围（4 处巨字场景）：
+//   - HomeMainView 月度净增 hero
+//   - StatsHubView 本月净增 hero
+//   - StatsMainView 本月净增 summary
+//   - AppearanceSettingsView 主题预览卡 hero
+//
+// 不适用：
+//   - 输入页（NewRecord/RecordDetail/Voice/Capture）保留 dynSize × 28/44 的现有比例
+//     （0.636 ≈ 0.64，差异可忽略；输入页有自己的字号自适应逻辑）
+//   - 列表/小金额场景同字号 ¥+数字单 Text 拼接，不存在比例问题
+
+enum AmountSymbolStyle {
+    /// ¥ 与主数字的字号比，全局统一 0.64
+    static let symbolScale: CGFloat = 0.64
+}
+
 // MARK: - 数值档位计算
 
 enum AmountFontScale {

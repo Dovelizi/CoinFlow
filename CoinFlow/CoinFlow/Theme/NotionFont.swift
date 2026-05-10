@@ -47,4 +47,11 @@ enum NotionFont {
         }
         return base
     }
+
+    /// UIKit 等价 body 字体（PingFangSC-Regular 15pt，与 SwiftUI body() 对齐）。
+    /// 供 NoteTextFieldUIKit 使用——UITextView 需要 UIFont 而非 SwiftUI Font。
+    static func bodyUIKit(size: CGFloat = 15) -> UIFont {
+        UIFont(name: "PingFangSC-Regular", size: size)
+            ?? UIFont.systemFont(ofSize: size)
+    }
 }

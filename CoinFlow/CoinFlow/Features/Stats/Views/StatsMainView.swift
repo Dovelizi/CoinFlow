@@ -48,14 +48,25 @@ struct StatsMainView: View {
                 Text("本月净增")
                     .font(NotionFont.micro())
                     .foregroundStyle(Color.inkTertiary)
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text("¥")
-                        .font(.system(size: 22, weight: .medium, design: .rounded))
-                        .foregroundStyle(toneColor(for: vm.monthlyNet))
-                    Text(StatsFormat.intGrouped(absDecimal(vm.monthlyNet)))
-                        .font(.system(size: 38, weight: .semibold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(toneColor(for: vm.monthlyNet))
-                }
+                // ¥ 与数字字重/字体/比例统一（全局规则 §AmountSymbolStyle）
+                // 用 attributed string 拼接 → 整组等比例缩小
+                let digitSize: CGFloat = 38
+                let symbolSize = digitSize * AmountSymbolStyle.symbolScale
+                let tone = toneColor(for: vm.monthlyNet)
+                let amountStr = StatsFormat.intGrouped(absDecimal(vm.monthlyNet))
+                let heroAttr: AttributedString = {
+                    var a = AttributedString("¥")
+                    a.font = .system(size: symbolSize, weight: .semibold, design: .rounded)
+                    a.foregroundColor = tone
+                    var n = AttributedString(amountStr)
+                    n.font = .system(size: digitSize, weight: .semibold, design: .rounded).monospacedDigit()
+                    n.foregroundColor = tone
+                    a.append(n)
+                    return a
+                }()
+                Text(heroAttr)
+                    .amountGroupAutoFit(scaleFloor: 0.4)
+                    .padding(.horizontal, NotionTheme.space5)
             }
 
             HStack(spacing: NotionTheme.space5) {

@@ -139,6 +139,8 @@
 		F4403EDD8BB3D7DA493FF9B2 /* SQLBinder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 310E766562A661E1E5976533 /* SQLBinder.swift */; };
 		F48DD621C42F723B54649E79 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9494CBBE2E21BB0F655FBB12 /* MainTabView.swift */; };
 		F7A67816A7A8065FF7755C51 /* AmountTextFieldUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 511DC26C60C306BD61494294 /* AmountTextFieldUIKit.swift */; };
+		AAAA000000000000000000B1 /* KeyboardAccessoryToolbar.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000A1 /* KeyboardAccessoryToolbar.swift */; };
+		AAAA000000000000000000B2 /* NoteTextFieldUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000A2 /* NoteTextFieldUIKit.swift */; };
 		FB0D1ECF5A46FBF9EE636DBD /* VoiceWizardStepView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9359C156388F8FEBBA7AB3F9 /* VoiceWizardStepView.swift */; };
 /* End PBXBuildFile section */
 
@@ -198,6 +200,8 @@
 		4C613C49EBF5E2040D2C33D7 /* Category.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Category.swift; sourceTree = "<group>"; };
 		4DFA4E64EA60889292328BB5 /* CoinFlowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoinFlowApp.swift; sourceTree = "<group>"; };
 		511DC26C60C306BD61494294 /* AmountTextFieldUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmountTextFieldUIKit.swift; sourceTree = "<group>"; };
+		AAAA000000000000000000A1 /* KeyboardAccessoryToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardAccessoryToolbar.swift; sourceTree = "<group>"; };
+		AAAA000000000000000000A2 /* NoteTextFieldUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteTextFieldUIKit.swift; sourceTree = "<group>"; };
 		529AF9C4E6B7405E81638EE7 /* MerchantBrand.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MerchantBrand.swift; sourceTree = "<group>"; };
 		53AD80DAC697889D78030BA6 /* RecordsLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordsLayout.swift; sourceTree = "<group>"; };
 		54DFBE2F01ACB3DB1ABAD284 /* NotionTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotionTheme.swift; sourceTree = "<group>"; };
@@ -624,9 +628,11 @@
 				25CC1C37A25DBBC40AB92EC2 /* AmountTextStyle.swift */,
 				F42695D4FCC067B010FA4966 /* DateGrouping.swift */,
 				FC2A273E9C78091AB5991AC2 /* InteractivePopEnabler.swift */,
+				AAAA000000000000000000A1 /* KeyboardAccessoryToolbar.swift */,
 				A4C664E42BE31ADAB06A9DE3 /* MainCoordinator.swift */,
 				0559BC1BF8F45DEBD90EB87E /* SymbolColor.swift */,
 				B2E65AF9A5C44B6235A7388B /* TabBarVisibility.swift */,
+				AAAA000000000000000000A2 /* NoteTextFieldUIKit.swift */,
 			);
 			path = Common;
 			sourceTree = "<group>";
@@ -855,6 +861,8 @@
 				3764D20575BCE0B15A1E7517 /* AmountTextStyle.swift in Sources */,
 				10BB9AFD39156B5FD8A4362B /* AmountInputGate.swift in Sources */,
 				F7A67816A7A8065FF7755C51 /* AmountTextFieldUIKit.swift in Sources */,
+				AAAA000000000000000000B1 /* KeyboardAccessoryToolbar.swift in Sources */,
+				AAAA000000000000000000B2 /* NoteTextFieldUIKit.swift in Sources */,
 				BF0CDD3C1A09236CE75B0558 /* DateGrouping.swift in Sources */,
 				E7AB5F3EAF3C50C79C0B992B /* RecordsListViewModel.swift in Sources */,
 				10E397837129BAF8C8666851 /* RecordsListView.swift in Sources */,
