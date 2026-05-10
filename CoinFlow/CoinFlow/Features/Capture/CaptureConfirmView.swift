@@ -66,6 +66,10 @@ struct CaptureConfirmView: View {
     @State private var merchantConfirmed: Bool = false
     @State private var categoryConfirmed: Bool = false
 
+    /// 金额拦截彩蛋 toast（与 NewRecordModal/RecordDetailSheet 一致）
+    @State private var clampedToastText: String? = nil
+    @State private var clampedToastTask: DispatchWorkItem? = nil
+
     /// 商户可选枚举（顺序 = Menu 展示顺序）
     private let merchantOptions: [String] = ["微信", "支付宝", "抖音", "银行", "其他"]
 
@@ -124,55 +128,62 @@ struct CaptureConfirmView: View {
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            navigationBar
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(spacing: NotionTheme.space6) {
-                        // M7-Fix20：失败横幅优先；成功且低置信度才展示黄色横幅
-                        if case .ocrFailed = mode {
-                            failureBanner(title: "识别失败",
-                                          subtitle: "请重新上传截图")
-                        } else if case .llmFailed = mode {
-                            failureBanner(title: "识别失败",
-                                          subtitle: "请检查截图是否为账单")
-                        } else if isSuccess && hasLowConfidenceField {
-                            lowConfidenceBanner
+        ZStack {
+            VStack(spacing: 0) {
+                navigationBar
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(spacing: NotionTheme.space6) {
+                            // M7-Fix20：失败横幅优先；成功且低置信度才展示黄色横幅
+                            if case .ocrFailed = mode {
+                                failureBanner(title: "识别失败",
+                                              subtitle: "请重新上传截图")
+                            } else if case .llmFailed = mode {
+                                failureBanner(title: "识别失败",
+                                              subtitle: "请检查截图是否为账单")
+                            } else if isSuccess && hasLowConfidenceField {
+                                lowConfidenceBanner
+                            }
+                            screenshotCard
+                            recognitionCard
+                            if isSuccess {
+                                noteCard
+                                keepScreenshotCard
+                                    .id("bottomAnchor")
+                            }
+                            if let err = vm.saveError {
+                                Text(err)
+                                    .font(NotionFont.small())
+                                    .foregroundStyle(Color.dangerRed)
+                            }
                         }
-                        screenshotCard
-                        recognitionCard
-                        if isSuccess {
-                            noteCard
-                            keepScreenshotCard
-                                .id("bottomAnchor")
-                        }
-                        if let err = vm.saveError {
-                            Text(err)
-                                .font(NotionFont.small())
-                                .foregroundStyle(Color.dangerRed)
-                        }
+                        .padding(.horizontal, NotionTheme.space5)
+                        .padding(.top, NotionTheme.space5)
+                        .padding(.bottom, NotionTheme.space9)
+                        // M7-Fix21：状态切换淡入，避免 success 时的高度突变 + 闪动
+                        .animation(.easeInOut(duration: 0.25), value: mode)
                     }
-                    .padding(.horizontal, NotionTheme.space5)
-                    .padding(.top, NotionTheme.space5)
-                    .padding(.bottom, NotionTheme.space9)
-                    // M7-Fix21：状态切换淡入，避免 success 时的高度突变 + 闪动
-                    .animation(.easeInOut(duration: 0.25), value: mode)
-                }
-                .onAppear {
-                    if scrollToBottom, isSuccess {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            withAnimation(.none) {
-                                proxy.scrollTo("bottomAnchor", anchor: .bottom)
+                    .onAppear {
+                        if scrollToBottom, isSuccess {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                withAnimation(.none) {
+                                    proxy.scrollTo("bottomAnchor", anchor: .bottom)
+                                }
                             }
                         }
                     }
                 }
+                bottomBar
             }
-            bottomBar
+            clampedToastView
         }
         .background(Color.appSheetCanvas.ignoresSafeArea())
         // 自绘键盘「完成」工具栏（替代原生 .toolbar { .keyboard }）
         .keyboardDoneToolbar()
+        // 金额拦截 → 弹彩蛋 toast（仅 overLimit 触发，与 NewRecord/RecordDetail 一致）
+        .onChange(of: vm.amountClampedAt) { _ in
+            showClampedToast()
+        }
         .sheet(isPresented: $showCategoryPicker) {
             CategoryPickerSheet(
                 categories: vm.availableCategories,
@@ -488,6 +499,46 @@ struct CaptureConfirmView: View {
 
     // MARK: - Amount block（M7-Fix14 可编辑 + 失焦校验 + 错误红框）
 
+    /// 金额拦截彩蛋 toast（与 NewRecordModal/RecordDetailSheet 行为一致）
+    @ViewBuilder
+    private var clampedToastView: some View {
+        if let text = clampedToastText {
+            VStack {
+                Spacer()
+                Text(text)
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.black.opacity(0.82))
+                    )
+                    .padding(.bottom, 120)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+            .allowsHitTesting(false)
+            .zIndex(2000)
+        }
+    }
+
+    private func showClampedToast() {
+        // 仅对 overLimit 触发"小目标"彩蛋；其他原因走红字提示就够了
+        guard let reason = vm.amountClampReason,
+              AmountInputGate.shouldShowDreamToast(for: reason) else { return }
+        withAnimation(.easeOut(duration: 0.18)) {
+            clampedToastText = AmountInputGate.dreamToastText
+        }
+        clampedToastTask?.cancel()
+        let task = DispatchWorkItem {
+            withAnimation(.easeIn(duration: 0.22)) {
+                clampedToastText = nil
+            }
+        }
+        clampedToastTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: task)
+    }
+
     private var amountBlock: some View {
         VStack(spacing: NotionTheme.space2) {
             // M7-Fix17：HStack 整体居中；-¥ / +¥ 小字 + 金额大字自然并排，不强制中央拉伸
@@ -515,41 +566,36 @@ struct CaptureConfirmView: View {
                 }
                 .buttonStyle(.plain)
 
-                // 金额 TextField：按内容宽度自适应，与 -¥ 构成紧凑组合
-                // M7-Fix18：lineLimit(1) + minimumScaleFactor 防止脏数据（如订单号被误识别）
-                // 撑破布局横向溢出到屏幕外。
-                ZStack(alignment: .leading) {
-                    if vm.amountText.isEmpty {
-                        Text("0")
-                            .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(Color.inkTertiary)
-                            .allowsHitTesting(false)
-                    }
-                    TextField("", text: $vm.amountText)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.leading)
-                        .font(.system(size: 44, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(amountValidation == .error
-                                         ? Color.dangerRed
-                                         : (vm.amountText.isEmpty ? Color.inkTertiary : directionColor))
-                        .focused($focusedField, equals: .amount)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .onChange(of: vm.amountText) { _ in
-                            // 用户编辑中：清除 attemptedSave 触发的红态（直到再次失焦）
-                        }
-                        .onChange(of: focusedField) { newField in
-                            if newField == .amount {
-                                amountConfirmed = true   // M7-Fix26：聚焦即确认
-                            } else {
-                                // 失焦时立即标记 attemptedSave，使 amountValidationMessage 生效
-                                if !vm.amountText.trimmingCharacters(in: .whitespaces).isEmpty {
-                                    vm.markAmountAttempted()
-                                }
+                // 金额 TextField：UIKit AmountTextFieldUIKit 在 delegate 层硬拦截，
+                // 与 NewRecord/RecordDetail/VoiceWizard 行为完全一致；
+                // 拒绝时 onClamp 触发震动 + UI 红字（vm 已暴露 amountClampReason/At）。
+                AmountTextFieldUIKit(
+                    text: Binding(
+                        get: { vm.amountText },
+                        set: { vm.amountText = $0 }
+                    ),
+                    placeholder: "0",
+                    font: NotionFont.amountBoldUIKit(size: 44),
+                    textColor: UIColor(amountValidation == .error
+                                       ? Color.dangerRed
+                                       : (vm.amountText.isEmpty ? Color.inkTertiary : directionColor)),
+                    placeholderColor: UIColor(Color.inkTertiary),
+                    alignment: .left,
+                    onClamp: { reason in vm.handleClamp(reason) },
+                    onFocusChange: { isFocused in
+                        if isFocused {
+                            focusedField = .amount
+                            amountConfirmed = true   // M7-Fix26：聚焦即确认
+                        } else {
+                            focusedField = nil
+                            if !vm.amountText.trimmingCharacters(in: .whitespaces).isEmpty {
+                                vm.markAmountAttempted()
                             }
                         }
-                }
-                .frame(maxWidth: 240)
+                    }
+                )
+                .frame(height: 52)
+                .fixedSize(horizontal: true, vertical: false)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, NotionTheme.space5)
@@ -559,8 +605,15 @@ struct CaptureConfirmView: View {
                     .stroke(amountValidation.borderColor, lineWidth: amountValidation == .none ? 0 : 1.5)
             )
 
-            // 校验提示文案
-            if let msg = vm.amountValidationMessage, amountValidation != .none {
+            // 校验/拦截提示文案（拦截红字优先级最高）
+            if vm.amountClampedHintVisible, let reason = vm.amountClampReason {
+                Text(AmountInputGate.hintText(for: reason))
+                    .font(NotionFont.micro())
+                    .foregroundStyle(Color.dangerRed)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, NotionTheme.space5)
+                    .transition(.opacity)
+            } else if let msg = vm.amountValidationMessage, amountValidation != .none {
                 Text(msg)
                     .font(NotionFont.micro())
                     .foregroundStyle(amountValidation == .error ? Color.dangerRed : Color.statusWarning)
@@ -1112,8 +1165,8 @@ struct CaptureConfirmView: View {
             return
         }
 
-        // 写入 vm
-        vm.amountText = AmountFormatter.display(amt)
+        // 写入 vm（走 Gate 统一校验：超 1 亿/小数 > 2 等异常会被拒，保持 amountText 空）
+        vm.applyAmountInput(AmountFormatter.display(amt))
         if let occ = first.occurredAt {
             vm.occurredAt = occ
         }

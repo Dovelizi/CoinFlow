@@ -19,6 +19,11 @@ struct NewRecordModal: View {
     @State private var showTimePicker = false
     @FocusState private var focusedField: Field?
 
+    /// 金额拦截彩蛋 toast：当 vm.amountClampedAt 变化时弹一次。
+    /// 文案是金额超限的轻吐槽，用 DispatchWorkItem 控制 1.6s 自动消失。
+    @State private var clampedToastText: String? = nil
+    @State private var clampedToastTask: DispatchWorkItem? = nil
+
     /// 保存成功回调（父视图据此关闭并可选择展示 toast）
     let onSaved: ((Record) -> Void)?
 
@@ -44,9 +49,14 @@ struct NewRecordModal: View {
                     .padding(NotionTheme.space5)
                 }
             }
+            clampedToastView
         }
         // 自绘键盘「完成」工具栏（替代原生 .toolbar { .keyboard }）
         .keyboardDoneToolbar()
+        // 金额拦截 → 弹彩蛋 toast（每次新拦截都重置 1.6s 显示）
+        .onChange(of: vm.amountClampedAt) { _ in
+            showClampedToast()
+        }
         .sheet(isPresented: $showCategoryPicker) {
             CategoryPickerSheet(
                 categories: vm.availableCategories,
@@ -59,6 +69,61 @@ struct NewRecordModal: View {
             timePickerSheet
                 .presentationDetents([.height(360)])
                 .presentationDragIndicator(.visible)
+        }
+    }
+
+    // MARK: - Clamped Toast（金额超限彩蛋）
+
+    @ViewBuilder
+    private var clampedToastView: some View {
+        if let text = clampedToastText {
+            VStack {
+                Spacer()
+                Text(text)
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.black.opacity(0.82))
+                    )
+                    .padding(.bottom, 120)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+            .allowsHitTesting(false)
+            .zIndex(2000)
+        }
+    }
+
+    private func showClampedToast() {
+        // 仅对"超过 1 亿"弹彩蛋；小数位/整数位/非法字符走红字提示就够了
+        guard vm.amountClampReason == .overLimit else { return }
+        let text = "别做梦了，你不会有一个小目标的"
+        withAnimation(.easeOut(duration: 0.18)) {
+            clampedToastText = text
+        }
+        clampedToastTask?.cancel()
+        let task = DispatchWorkItem {
+            withAnimation(.easeIn(duration: 0.22)) {
+                clampedToastText = nil
+            }
+        }
+        clampedToastTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: task)
+    }
+
+    /// 红字文案：按 vm.amountClampReason 分流（默认走 overLimit 文案兼容旧路径）
+    private var clampedHintText: String {
+        switch vm.amountClampReason {
+        case .tooManyFractionDigits:
+            return "金额仅支持小数点后两位"
+        case .tooManyIntegerDigits, .overLimit:
+            return "已达上限（1 亿）"
+        case .invalidCharacter:
+            return "包含不支持的字符"
+        case .none:
+            return "已达上限（1 亿）"
         }
     }
 
@@ -117,34 +182,48 @@ struct NewRecordModal: View {
 
     private var amountField: some View {
         VStack(alignment: .center, spacing: NotionTheme.space3) {
-            // 占位 0 用 ZStack 显式画灰色层，避免 TextField placeholder 继承前景色变红
-            ZStack(alignment: .center) {
-                HStack(alignment: .firstTextBaseline, spacing: NotionTheme.space2) {
-                    Spacer(minLength: 0)
-                    Text("¥")
-                        .font(NotionFont.amountBold(size: 28))
-                        .foregroundStyle(DirectionColor.amountForeground(kind: vm.direction))
-                    if vm.amountText.isEmpty {
-                        Text("0")
-                            .font(NotionFont.amountBold(size: 44))
-                            .foregroundStyle(Color.inkTertiary)
-                    }
-                    TextField("", text: $vm.amountText)
-                        .keyboardType(.decimalPad)
-                        .font(NotionFont.amountBold(size: 44))
-                        .foregroundStyle(DirectionColor.amountForeground(kind: vm.direction))
-                        .focused($focusedField, equals: .amount)
-                        .onAppear { focusedField = .amount }
-                        .fixedSize(horizontal: true, vertical: false)
-                    Spacer(minLength: 0)
-                }
+            // 字号自适应（按数值档位）：< 10万 44pt → 1亿 26.4pt
+            // 用 UIKit AmountTextFieldUIKit 在 UITextFieldDelegate 层做硬拦截，
+            // 杜绝 SwiftUI Binding 在快速输入下"UI 已显示但 state 拒绝"的不一致问题。
+            let dynSize = AmountFontScale.scaledSize(base: 44, forText: vm.amountText)
+            let amountColor = UIColor(DirectionColor.amountForeground(kind: vm.direction))
+            // ¥ + TextField 作为整组居中：
+            //  - 内层 HStack 按内容真实宽度（fixedSize）—— 整组像一个原子元素
+            //  - 外层 VStack 用 .frame(maxWidth: .infinity) 让这个"原子"水平居中
+            //  - Gate 已硬锁整数 ≤ 9 位 / 小数 ≤ 2 位（最长 12 字符），44pt 下整组约 330pt
+            //    仍小于屏宽，居中有余量
+            HStack(alignment: .firstTextBaseline, spacing: NotionTheme.space2) {
+                Text("¥")
+                    .font(NotionFont.amountBold(size: dynSize * 28 / 44))
+                    .foregroundStyle(DirectionColor.amountForeground(kind: vm.direction))
+                AmountTextFieldUIKit(
+                    text: $vm.amountText,
+                    placeholder: "0",
+                    font: NotionFont.amountBoldUIKit(size: dynSize),
+                    textColor: amountColor,
+                    placeholderColor: UIColor(Color.inkTertiary),
+                    alignment: .left,
+                    autoFocus: true,
+                    onClamp: { reason in vm.handleClamp(reason) }
+                )
+                .frame(height: dynSize * 1.2)
+                .fixedSize(horizontal: true, vertical: false)
             }
+            .fixedSize(horizontal: true, vertical: false)
             .frame(maxWidth: .infinity, alignment: .center)
 
+            // 提示行：
+            // - 校验错误（红） · 优先级最高
+            // - 拦截原因红字（小数位/整数位/上限） · vm 拦截后 2 秒内显示
             if let msg = vm.amountValidationMessage {
                 Text(msg)
                     .font(NotionFont.small())
                     .foregroundStyle(Color.dangerRed)
+            } else if vm.amountClampedHintVisible {
+                Text(clampedHintText)
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.dangerRed)
+                    .transition(.opacity)
             }
         }
         .padding(NotionTheme.space5)
@@ -152,6 +231,7 @@ struct NewRecordModal: View {
             RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
                 .stroke(vm.isAmountInError ? Color.dangerRed : Color.clear, lineWidth: 1)
         )
+        .animation(.easeInOut(duration: 0.18), value: vm.amountClampedAt)
     }
 
     // MARK: - Direction segmented

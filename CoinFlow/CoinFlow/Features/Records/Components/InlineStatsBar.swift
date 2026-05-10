@@ -43,8 +43,7 @@ struct InlineStatsBar: View {
             Text(value)
                 .font(NotionFont.amountBold(size: 17))
                 .foregroundStyle(valueColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .amountAutoFit(base: 17, scaleFloor: 0.4)
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }

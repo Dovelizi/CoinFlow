@@ -8,6 +8,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 @MainActor
 final class RecordDetailViewModel: ObservableObject {
@@ -19,6 +20,10 @@ final class RecordDetailViewModel: ObservableObject {
     @Published var selectedCategory: Category?
     @Published private(set) var availableCategories: [Category] = []
     @Published private(set) var saveError: String?
+
+    /// 拦截原因（与 AmountInputGate 共用类型）；UI 监听 amountClampedAt 显示红字 + 彩蛋 toast
+    @Published private(set) var amountClampReason: AmountInputGate.ClampReason?
+    @Published private(set) var amountClampedAt: Date?
 
     // MARK: - Immutable refs
 
@@ -81,6 +86,34 @@ final class RecordDetailViewModel: ObservableObject {
         case .synced:   return "已同步"
         case .failed:   return "同步失败"
         }
+    }
+
+    // MARK: - Amount input gate（共用 AmountInputGate）
+
+    /// View 层金额写入入口（SwiftUI Binding 路径用，UIKit 路径走 editingChanged + handleClamp）
+    @discardableResult
+    func applyAmountInput(_ raw: String) -> Bool {
+        switch AmountInputGate.evaluate(raw) {
+        case .accept(let cleaned):
+            if amountText != cleaned { amountText = cleaned }
+            return true
+        case .reject(let reason):
+            handleClamp(reason)
+            return false
+        }
+    }
+
+    /// UIKit AmountTextFieldUIKit 拦截回调（震动 + 红字 + toast 触发源）
+    func handleClamp(_ reason: AmountInputGate.ClampReason) {
+        amountClampReason = reason
+        amountClampedAt = Date()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// "已达上限"轻提示是否当前可见。拦截后保留 2 秒。
+    var amountClampedHintVisible: Bool {
+        guard let t = amountClampedAt else { return false }
+        return Date().timeIntervalSince(t) < 2.0
     }
 
     // MARK: - Commits

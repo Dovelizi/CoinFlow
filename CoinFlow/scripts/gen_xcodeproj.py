@@ -58,6 +58,9 @@ SOURCE_FILES: list[str] = [
     # M3.2 — Records UI
     "Features/Common/SymbolColor.swift",
     "Features/Common/AmountFormatter.swift",
+    "Features/Common/AmountTextStyle.swift",
+    "Features/Common/AmountInputGate.swift",
+    "Features/Common/AmountTextFieldUIKit.swift",
     "Features/Common/DateGrouping.swift",
     "Features/Records/RecordsListViewModel.swift",
     "Features/Records/RecordsListView.swift",

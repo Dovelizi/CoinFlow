@@ -59,12 +59,11 @@ struct RecordGridView: View {
                 }
             }
 
-            // 金额：30pt 居中
+            // 金额：30pt 居中；全局规则：超宽等比例缩小不截断
             Text("\(kind == .expense ? "-" : "+")\(AmountFormatter.display(record.amount))")
                 .font(NotionFont.amountBold(size: 30))
                 .foregroundStyle(DirectionColor.amountForeground(kind: kind))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .amountAutoFit(base: 30)
                 .frame(maxWidth: .infinity)
 
             // 备注：居中（仅有内容时显示）

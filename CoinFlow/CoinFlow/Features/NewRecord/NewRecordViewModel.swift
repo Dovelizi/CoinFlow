@@ -13,9 +13,28 @@ import UIKit
 @MainActor
 final class NewRecordViewModel: ObservableObject {
 
+    /// 业务硬上限：1 亿（避免 LLM / OCR 误判天价账单 + 防止误输入）。
+    /// 实际校验逻辑统一在 `AmountInputGate`；这里仅保留向后兼容引用。
+    static let amountHardLimit: Decimal = AmountInputGate.hardLimit
+
     // MARK: - Published
 
+    /// 金额输入框文本（**只读绑定**用 `$vm.amountText`，写入必须走 `applyAmountInput(_:)`）。
+    ///
+    /// 设计：所有写入经 `AmountInputGate.evaluate` 统一校验（与 RecordDetail/
+    /// VoiceWizard/CaptureConfirm 共用同一份规则）。SwiftUI `TextField` 路径下
+    /// `@Published.didSet` 不可靠，故 View 层用自定义 Binding 调用 applyAmountInput。
     @Published var amountText: String = ""
+
+    /// 拦截原因别名（内部仍用 `AmountClampReason`，对外类型来自 Gate）
+    typealias AmountClampReason = AmountInputGate.ClampReason
+
+    /// 最近一次拦截原因，与 `amountClampedAt` 同步刷新。UI 据此分流文案。
+    @Published private(set) var amountClampReason: AmountClampReason?
+
+    /// 最近一次拦截时间戳；UI 通过 `amountClampedHintVisible` 判断是否显示提示
+    @Published private(set) var amountClampedAt: Date?
+
     @Published var direction: CategoryKind = .expense
     @Published var selectedCategory: Category?
     @Published var occurredAt: Date = Date()
@@ -71,8 +90,8 @@ final class NewRecordViewModel: ObservableObject {
     var parsedAmount: Decimal? {
         let trimmed = amountText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty, let d = Decimal(string: trimmed), d > 0 else { return nil }
-        // M7-Fix13：金额上限 1 亿（避免 LLM / OCR 误判天价账单）
-        guard d <= 100_000_000 else { return nil }
+        // 业务上限 1 亿（amountText.didSet 已实时拦截超额输入；此处兜底校验）
+        guard d <= Self.amountHardLimit else { return nil }
         return d
     }
 
@@ -88,8 +107,17 @@ final class NewRecordViewModel: ObservableObject {
         }
         if Decimal(string: trimmed) == nil { return "金额格式不正确" }
         if let d = Decimal(string: trimmed), d <= 0 { return "金额必须大于 0" }
-        if let d = Decimal(string: trimmed), d > 100_000_000 { return "金额超过上限（1 亿）" }
+        // didSet 已实时截断，正常用户不会触发此分支；
+        // 仅当外部代码（OCR/LLM 自动填充）绕过 didSet 写超额值时才作为兜底提示
+        if let d = Decimal(string: trimmed), d > Self.amountHardLimit { return "金额超过上限（1 亿）" }
         return nil
+    }
+
+    /// "已达上限"轻提示是否当前可见。拦截后保留 2 秒。
+    /// view 层可监听 `amountClampedAt` 做动画进出。
+    var amountClampedHintVisible: Bool {
+        guard let t = amountClampedAt else { return false }
+        return Date().timeIntervalSince(t) < 2.0
     }
 
     /// 是否处于金额错误展示态（驱动红 stroke + 红字）
@@ -100,6 +128,35 @@ final class NewRecordViewModel: ObservableObject {
     /// M7-Fix14：金额输入失焦时标记 attemptedSave，使得校验态立即生效
     func markAmountAttempted() {
         attemptedSave = true
+    }
+
+    // MARK: - Amount input gate（统一调用 AmountInputGate）
+    //
+    // 所有写入 amountText 的代码都必须经此函数。规则定义见 AmountInputGate.swift，
+    // 与 RecordDetailViewModel / VoiceWizardStepView / CaptureConfirmView 共用同一份。
+
+    /// View 层金额写入入口（SwiftUI Binding 路径用）。
+    /// **注意**：UIKit AmountTextFieldUIKit 已经在 UITextFieldDelegate 层硬拦截，
+    /// 接受时通过 editingChanged 直接写 amountText（不经此函数），拒绝时调
+    /// `handleClamp(_:)`。此函数仅在 OCR 自动填充等"非用户键入"路径使用。
+    @discardableResult
+    func applyAmountInput(_ raw: String) -> Bool {
+        switch AmountInputGate.evaluate(raw) {
+        case .accept(let cleaned):
+            if amountText != cleaned { amountText = cleaned }
+            return true
+        case .reject(let reason):
+            handleClamp(reason)
+            return false
+        }
+    }
+
+    /// UIKit 层硬拦截后的反馈入口（公开供 AmountTextFieldUIKit 调用）。
+    /// 记录原因 + 时间戳 + 轻震动，View 层据此显示红字 + 彩蛋 toast。
+    func handleClamp(_ reason: AmountClampReason) {
+        amountClampReason = reason
+        amountClampedAt = Date()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     // MARK: - Save

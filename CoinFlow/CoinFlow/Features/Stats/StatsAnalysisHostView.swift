@@ -10,7 +10,7 @@
 
 import SwiftUI
 
-/// Stats Hub 8 个深度分析子页面 ID。
+/// Stats Hub 9 个深度分析子页面 ID。
 enum StatsAnalysisDestination: String, Hashable, CaseIterable {
     case trend       // 月度趋势曲线
     case sankey      // 收入→支出资金流
@@ -20,6 +20,7 @@ enum StatsAnalysisDestination: String, Hashable, CaseIterable {
     case category    // 分类详情下钻
     case year        // 12 月年度视图
     case hourly      // 24 小时分布
+    case summary     // M10 · LLM 账单复盘历史
 }
 
 /// 词云 / 分类排行点击 → 跳转到分类详情页时携带的目标 categoryId。

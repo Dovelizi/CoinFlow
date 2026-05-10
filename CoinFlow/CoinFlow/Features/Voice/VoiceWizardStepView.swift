@@ -26,6 +26,20 @@ struct VoiceWizardStepView: View {
     @State private var showCategoryPicker = false
     @FocusState private var focusedField: Field?
 
+    /// 金额输入框的当前文本（与 vm.currentBill.amount 双向同步）。
+    /// 设计原因：vm.currentBill.amount 是 Decimal?，View 层 TextField 需要 String，
+    /// 直接绑 String? ↔ Decimal 转换会丢失中间态（如末尾 "."、前导零）。
+    /// 用 @State 持有用户输入字符串，仅在合法变化时回写 Decimal。
+    @State private var amountInputText: String = ""
+
+    /// 金额拦截原因（与 NewRecord/RecordDetail 共用类型）
+    @State private var amountClampReason: AmountInputGate.ClampReason? = nil
+    @State private var amountClampedAt: Date? = nil
+
+    /// 金额拦截彩蛋 toast
+    @State private var clampedToastText: String? = nil
+    @State private var clampedToastTask: DispatchWorkItem? = nil
+
     /// 当前笔当前方向下可选分类（用于 CategoryPickerSheet）
     private var availableCategories: [Category] {
         guard let dir = vm.currentBill.direction else { return [] }
@@ -56,18 +70,69 @@ struct VoiceWizardStepView: View {
     }
 
     private var amountText: Binding<String> {
+        // 兼容旧 Binding 调用点（如 progressDot 之外可能引用）；
+        // 实际编辑路径已切到 UIKit AmountTextFieldUIKit + amountInputText。
         Binding(
-            get: {
-                vm.currentBill.amount.map { AmountFormatter.display($0) } ?? ""
-            },
-            set: { newValue in
-                let cleaned = newValue.trimmingCharacters(in: .whitespaces)
-                let parsed = Decimal(string: cleaned.replacingOccurrences(of: ",", with: ""))
-                vm.currentBill.amount = (parsed ?? 0) > 0 ? parsed : nil
-                vm.recomputeMissing()
-                vm.commitCurrentEdits()
-            }
+            get: { amountInputText },
+            set: { _ in /* no-op: 写入由 UIKit 包装的 delegate 完成 */ }
         )
+    }
+
+    /// 触发金额拦截反馈：震动 + 红字 + 彩蛋 toast
+    private func triggerAmountClamped(_ reason: AmountInputGate.ClampReason) {
+        amountClampReason = reason
+        amountClampedAt = Date()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        if AmountInputGate.shouldShowDreamToast(for: reason) {
+            withAnimation(.easeOut(duration: 0.18)) {
+                clampedToastText = AmountInputGate.dreamToastText
+            }
+            clampedToastTask?.cancel()
+            let task = DispatchWorkItem {
+                withAnimation(.easeIn(duration: 0.22)) {
+                    clampedToastText = nil
+                }
+            }
+            clampedToastTask = task
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: task)
+        }
+    }
+
+    private var amountClampedHintVisible: Bool {
+        guard let t = amountClampedAt else { return false }
+        return Date().timeIntervalSince(t) < 2.0
+    }
+
+    /// 当进入页面或切到下一笔时，把 vm.currentBill.amount 同步到本地编辑文本。
+    /// 对 nil（用户未填）保持空串；对有值用 AmountFormatter.display 给个标准格式。
+    private func syncAmountInputFromVM() {
+        if let a = vm.currentBill.amount {
+            amountInputText = AmountFormatter.display(a)
+        } else {
+            amountInputText = ""
+        }
+    }
+
+    @ViewBuilder
+    private var clampedToastView: some View {
+        if let text = clampedToastText {
+            VStack {
+                Spacer()
+                Text(text)
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.black.opacity(0.82))
+                    )
+                    .padding(.bottom, 120)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+            .allowsHitTesting(false)
+            .zIndex(2000)
+        }
     }
 
     private var occurredAtBinding: Binding<Date> {
@@ -78,25 +143,42 @@ struct VoiceWizardStepView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            navigationBar
-            progressHeader
-            ScrollView {
-                VStack(spacing: NotionTheme.space7) {
-                    amountSection
-                    directionSection
-                    fieldRows
-                    noteSection
+        ZStack {
+            VStack(spacing: 0) {
+                navigationBar
+                progressHeader
+                ScrollView {
+                    VStack(spacing: NotionTheme.space7) {
+                        amountSection
+                        directionSection
+                        fieldRows
+                        noteSection
+                    }
+                    .padding(.horizontal, NotionTheme.space6)
+                    .padding(.top, NotionTheme.space6)
+                    .padding(.bottom, NotionTheme.space9)
                 }
-                .padding(.horizontal, NotionTheme.space6)
-                .padding(.top, NotionTheme.space6)
-                .padding(.bottom, NotionTheme.space9)
+                bottomBar
             }
-            bottomBar
+            clampedToastView
         }
         .background(Color.appSheetCanvas.ignoresSafeArea())
         // 自绘键盘「完成」工具栏（替代原生 .toolbar { .keyboard }）
         .keyboardDoneToolbar()
+        // 进入页面 / 切笔时，把 vm.currentBill.amount 同步到本地编辑文本
+        .onAppear { syncAmountInputFromVM() }
+        .onChange(of: vm.currentIndex) { _ in syncAmountInputFromVM() }
+        // 用户编辑（UIKit AmountTextFieldUIKit 已在 delegate 层校验通过）→ 写回 vm
+        .onChange(of: amountInputText) { newValue in
+            let parsable = newValue.hasSuffix(".") ? String(newValue.dropLast()) : newValue
+            if let d = Decimal(string: parsable), d > 0 {
+                vm.currentBill.amount = d
+            } else {
+                vm.currentBill.amount = nil
+            }
+            vm.recomputeMissing()
+            vm.commitCurrentEdits()
+        }
         .sheet(isPresented: $showCategoryPicker) {
             CategoryPickerSheet(
                 categories: availableCategories,
@@ -248,30 +330,28 @@ struct VoiceWizardStepView: View {
     // MARK: - Amount
 
     private var amountSection: some View {
-        VStack(spacing: NotionTheme.space2) {
+        // 字号自适应（数值档位 + 字符兜底）：与 NewRecord/Detail 全局一致
+        // 用 UIKit AmountTextFieldUIKit 在 delegate 层硬拦截输入，与新建/编辑流水行为一致
+        let dynSize = AmountFontScale.scaledSize(base: 44, forText: amountInputText)
+        return VStack(spacing: NotionTheme.space2) {
             HStack(alignment: .firstTextBaseline, spacing: NotionTheme.space2) {
-                Spacer(minLength: 0)
                 Text(directionSymbol)
-                    .font(NotionFont.amountBold(size: 28))
+                    .font(NotionFont.amountBold(size: dynSize * 28 / 44))
                     .foregroundStyle(directionColor)
-                ZStack(alignment: .leading) {
-                    // 空态灰色 "0" 占位（与 Preview L527-529 一致）
-                    if amountText.wrappedValue.isEmpty {
-                        Text("0")
-                            .font(NotionFont.amountBold(size: 44))
-                            .foregroundStyle(Color.inkTertiary)
-                            .allowsHitTesting(false)
-                    }
-                    TextField("", text: amountText)
-                        .keyboardType(.decimalPad)
-                        .font(NotionFont.amountBold(size: 44))
-                        .foregroundStyle(directionColor)
-                        .focused($focusedField, equals: .amount)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-                Spacer(minLength: 0)
+                AmountTextFieldUIKit(
+                    text: $amountInputText,
+                    placeholder: "0",
+                    font: NotionFont.amountBoldUIKit(size: dynSize),
+                    textColor: UIColor(directionColor),
+                    placeholderColor: UIColor(Color.inkTertiary),
+                    alignment: .left,
+                    onClamp: { reason in triggerAmountClamped(reason) }
+                )
+                .frame(height: dynSize * 1.2)
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .frame(maxWidth: .infinity)
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.vertical, NotionTheme.space5)
             .background(
                 RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
@@ -284,7 +364,15 @@ struct VoiceWizardStepView: View {
                     .stroke(isMissingAmount ? Color.dangerRed : Color.clear,
                             lineWidth: 1.5)
             )
-            if isMissingAmount {
+            // 拦截红字（与 NewRecord/RecordDetail 文案一致）
+            if amountClampedHintVisible, let reason = amountClampReason {
+                Text(AmountInputGate.hintText(for: reason))
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.dangerRed)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 4)
+                    .transition(.opacity)
+            } else if isMissingAmount {
                 Text("请输入金额（语音未识别）")
                     .font(NotionFont.small())
                     .foregroundStyle(Color.dangerRed)
@@ -292,6 +380,7 @@ struct VoiceWizardStepView: View {
                     .padding(.leading, 4)
             }
         }
+        .animation(.easeInOut(duration: 0.18), value: amountClampedAt)
     }
 
     private var directionColor: Color {

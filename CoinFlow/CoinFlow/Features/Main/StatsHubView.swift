@@ -121,7 +121,7 @@ struct StatsHubView: View {
         gen.impactOccurred()
     }
 
-    // MARK: - 8+1 卡片定义（中央默认 = 本月汇总）
+    // MARK: - 9 卡片定义（中央默认 = 本月汇总）
 
     private struct HubCard: Identifiable, Equatable {
         let id: StatsAnalysisDestination
@@ -132,9 +132,7 @@ struct StatsHubView: View {
 
     private var allCards: [HubCard] {
         [
-            // 中央默认卡（本月汇总） — 用 special destination
-            // 直接使用 8 个子页面的 destination：8 张卡。
-            // 设计稿是"10 张报告"（含本月汇总+餐饮详情），我们用 8 张子页面卡（不含 main 页因为 main 页内容已经被 hero 覆盖）+ 2 张衍生（年度 / 餐饮分类详情各 1）。
+            // 9 张子页面卡：8 个深度分析 + 1 个 LLM 账单复盘历史（M10）
             HubCard(id: .trend,     title: "趋势曲线",   icon: "chart.line.uptrend.xyaxis",   tone: .blue),
             HubCard(id: .sankey,    title: "资金流向",   icon: "arrow.left.arrow.right",      tone: .orange),
             HubCard(id: .wordcloud, title: "分类词云",   icon: "text.bubble.fill",            tone: .pink),
@@ -143,6 +141,7 @@ struct StatsHubView: View {
             HubCard(id: .category,  title: "分类详情",   icon: "fork.knife",                  tone: .orange),
             HubCard(id: .year,      title: "年度回顾",   icon: "calendar",                    tone: .brown),
             HubCard(id: .hourly,    title: "时段分布",   icon: "clock.fill",                  tone: .blue),
+            HubCard(id: .summary,   title: "账单复盘",   icon: "sparkles",                    tone: .purple),
         ]
     }
 
@@ -626,6 +625,23 @@ struct StatsHubView: View {
                 heroValue: peak.map { String(format: "%02d:00", $0.hour) } ?? "—",
                 insight: peak.map { "高峰时段 · ¥" + StatsFormat.intGrouped($0.amount) } ?? "暂无数据"
             )
+        case .summary:
+            // 同步轻查询：取 listAll 第一条作为最新一次复盘的预览
+            // listAll 走 SQLite 单行索引扫描，DB ready 时几毫秒，view 重渲不会成为瓶颈
+            let latest = (try? SQLiteBillsSummaryRepository.shared.listAll(includesDeleted: false))?.first
+            if let s = latest {
+                let kindLabel: String = {
+                    switch s.periodKind {
+                    case .week:  return "周报"
+                    case .month: return "月报"
+                    case .year:  return "年报"
+                    }
+                }()
+                let digest = s.summaryDigest.isEmpty ? "查看完整 AI 复盘" : s.summaryDigest
+                return CardPreview(heroValue: kindLabel, insight: digest)
+            } else {
+                return CardPreview(heroValue: "—", insight: "暂无复盘 · 点击查看历史")
+            }
         }
     }
 
@@ -672,6 +688,7 @@ struct StatsHubView: View {
         case .category:  StatsCategoryDetailView()
         case .year:      StatsYearView()
         case .hourly:    StatsHourlyView()
+        case .summary:   BillsSummaryListView(showsTestSection: false)
         }
     }
 }

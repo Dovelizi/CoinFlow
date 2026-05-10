@@ -24,6 +24,10 @@ struct RecordDetailSheet: View {
     /// 保持旧行为（任一字段失焦即保存）。onChange(of:) 只提供新值，需自行记忆旧值。
     @State private var lastFocus: Field?
 
+    /// 金额拦截彩蛋 toast（与 NewRecordModal 行为完全一致）
+    @State private var clampedToastText: String? = nil
+    @State private var clampedToastTask: DispatchWorkItem? = nil
+
     init(record: Record) {
         _vm = StateObject(wrappedValue: RecordDetailViewModel(record: record))
     }
@@ -42,6 +46,7 @@ struct RecordDetailSheet: View {
                     }
                     .padding(NotionTheme.space5)
                 }
+                clampedToastView
             }
             .navigationTitle("流水详情")
             .navigationBarTitleDisplayMode(.inline)
@@ -51,6 +56,10 @@ struct RecordDetailSheet: View {
                     vm.commit()
                 }
                 lastFocus = newValue
+            }
+            // 金额拦截 → 弹彩蛋 toast（仅 overLimit 触发，与 NewRecordModal 一致）
+            .onChange(of: vm.amountClampedAt) { _ in
+                showClampedToast()
             }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -101,18 +110,43 @@ struct RecordDetailSheet: View {
 
     private var amountField: some View {
         VStack(alignment: .center, spacing: NotionTheme.space3) {
-            HStack(alignment: .firstTextBaseline, spacing: NotionTheme.space2) {
-                Spacer(minLength: 0)
+            // 字号自适应（数值档位 + 字符兜底）：base 36pt 按数值大小分档缩放
+            // 用 UIKit 包装的 AmountTextFieldUIKit 在 delegate 层硬拦截输入，
+            // 与新建流水/语音/OCR 行为完全一致。
+            let dynSize = AmountFontScale.scaledSize(base: 36, forText: vm.amountText)
+            let amountColor = UIColor(DirectionColor.amountForeground(kind: vm.direction))
+            // ¥ + TextField 整组居中：内层 HStack fixedSize（按内容排版），
+            // 外层 .frame(maxWidth: .infinity, alignment: .center) 把整组推到中央。
+            // 对齐用 .center 而非 .firstTextBaseline：¥ 与数字字号不同（28 vs 36），
+            // 基线对齐会让小字号的 ¥ 视觉偏下，视觉中心不齐。用 frame 中心对齐更稳。
+            HStack(alignment: .center, spacing: NotionTheme.space2) {
                 Text("¥")
-                    .font(NotionFont.amountBold(size: 28))
+                    .font(NotionFont.amountBold(size: dynSize * 28 / 36))
                     .foregroundStyle(DirectionColor.amountForeground(kind: vm.direction))
-                TextField("0", text: $vm.amountText)
-                    .keyboardType(.decimalPad)
-                    .font(NotionFont.amountBold(size: 44))
-                    .foregroundStyle(DirectionColor.amountForeground(kind: vm.direction))
-                    .focused($focusedField, equals: .amount)
-                    .fixedSize(horizontal: true, vertical: false)
-                Spacer(minLength: 0)
+                    .frame(height: dynSize * 1.2)
+                AmountTextFieldUIKit(
+                    text: $vm.amountText,
+                    placeholder: "0",
+                    font: NotionFont.amountBoldUIKit(size: dynSize),
+                    textColor: amountColor,
+                    placeholderColor: UIColor(Color.inkTertiary),
+                    alignment: .left,
+                    onClamp: { reason in vm.handleClamp(reason) },
+                    onFocusChange: { isFocused in
+                        focusedField = isFocused ? .amount : nil
+                    }
+                )
+                .frame(height: dynSize * 1.2)
+                .fixedSize(horizontal: true, vertical: false)
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, alignment: .center)
+            // 拦截原因红字（与 NewRecord 文案一致）
+            if vm.amountClampedHintVisible, let reason = vm.amountClampReason {
+                Text(AmountInputGate.hintText(for: reason))
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.dangerRed)
+                    .transition(.opacity)
             }
             Text(vm.direction == .expense ? "支出" : "收入")
                 .font(NotionFont.micro())
@@ -124,6 +158,47 @@ struct RecordDetailSheet: View {
             }
         }
         .frame(maxWidth: .infinity)
+        .animation(.easeInOut(duration: 0.18), value: vm.amountClampedAt)
+    }
+
+    // MARK: - Clamped Toast（金额超限彩蛋，与 NewRecordModal 行为一致）
+
+    @ViewBuilder
+    private var clampedToastView: some View {
+        if let text = clampedToastText {
+            VStack {
+                Spacer()
+                Text(text)
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.black.opacity(0.82))
+                    )
+                    .padding(.bottom, 120)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+            .allowsHitTesting(false)
+            .zIndex(2000)
+        }
+    }
+
+    private func showClampedToast() {
+        guard let reason = vm.amountClampReason,
+              AmountInputGate.shouldShowDreamToast(for: reason) else { return }
+        withAnimation(.easeOut(duration: 0.18)) {
+            clampedToastText = AmountInputGate.dreamToastText
+        }
+        clampedToastTask?.cancel()
+        let task = DispatchWorkItem {
+            withAnimation(.easeIn(duration: 0.22)) {
+                clampedToastText = nil
+            }
+        }
+        clampedToastTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6, execute: task)
     }
 
     // MARK: - Category

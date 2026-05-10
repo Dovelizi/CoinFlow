@@ -16,6 +16,15 @@ import SwiftUI
 
 struct BillsSummaryListView: View {
 
+    /// 是否展示顶部"生成测试 + 模拟推送"区块。
+    /// - 设置页（"我的"）入口：true（默认；保持原行为）
+    /// - 统计页第 9 张卡入口：false（仅展示历史，移除调试入口）
+    let showsTestSection: Bool
+
+    init(showsTestSection: Bool = true) {
+        self.showsTestSection = showsTestSection
+    }
+
     @Environment(\.dismiss) private var dismiss
 
     /// 历史所有总结（按 period_start 降序）
@@ -38,24 +47,26 @@ struct BillsSummaryListView: View {
                 navBar
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: NotionTheme.space5) {
-                        testButtonsSection
-                            .padding(.horizontal, NotionTheme.space5)
-                            .padding(.top, NotionTheme.space5)
-
-                        if let err = generationError {
-                            errorBanner(err)
+                        if showsTestSection {
+                            testButtonsSection
                                 .padding(.horizontal, NotionTheme.space5)
-                        }
+                                .padding(.top, NotionTheme.space5)
 
-                        if let info = debugInfoMessage {
-                            infoBanner(info)
-                                .padding(.horizontal, NotionTheme.space5)
+                            if let err = generationError {
+                                errorBanner(err)
+                                    .padding(.horizontal, NotionTheme.space5)
+                            }
+
+                            if let info = debugInfoMessage {
+                                infoBanner(info)
+                                    .padding(.horizontal, NotionTheme.space5)
+                            }
                         }
 
                         // 历史区
                         historyArea
                             .padding(.horizontal, NotionTheme.space5)
-                            .padding(.top, NotionTheme.space7)
+                            .padding(.top, showsTestSection ? NotionTheme.space7 : NotionTheme.space5)
                     }
                     .padding(.bottom, NotionTheme.space7)
                 }

@@ -218,14 +218,22 @@ struct HomeMainView: View {
                         .font(NotionFont.small())
                         .foregroundStyle(Color.inkSecondary)
                 } else {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("¥")
-                            .font(.system(size: 32, weight: .semibold, design: .rounded))
-                            .foregroundStyle(netColor)
-                        Text(AmountFormatter.display(vm.monthlyNet < 0 ? -vm.monthlyNet : vm.monthlyNet))
-                            .font(.system(size: 56, weight: .bold, design: .rounded).monospacedDigit())
-                            .foregroundStyle(netColor)
-                    }
+                    // 用单个 Text 拼接 ¥ 与数字 → minimumScaleFactor 才能整组等比例缩小
+                    // ¥ 32pt + 数字 56pt 混用 baseline 通过 attributed string 实现
+                    let amountStr = AmountFormatter.display(vm.monthlyNet < 0 ? -vm.monthlyNet : vm.monthlyNet)
+                    let attr: AttributedString = {
+                        var a = AttributedString("¥")
+                        a.font = .system(size: 32, weight: .semibold, design: .rounded)
+                        a.foregroundColor = netColor
+                        var n = AttributedString(amountStr)
+                        n.font = .system(size: 56, weight: .bold, design: .rounded).monospacedDigit()
+                        n.foregroundColor = netColor
+                        a.append(n)
+                        return a
+                    }()
+                    Text(attr)
+                        .amountGroupAutoFit(scaleFloor: 0.3)   // 56pt → 最小 ~17pt
+                        .padding(.horizontal, NotionTheme.space5)
                 }
             }
             HStack(spacing: NotionTheme.space5) {
@@ -262,8 +270,7 @@ struct HomeMainView: View {
             Text(value)
                 .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(tone)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
+                .amountAutoFit(base: 14, scaleFloor: 0.4)
             Text(label)
                 .font(NotionFont.micro())
                 .foregroundStyle(Color.inkTertiary)

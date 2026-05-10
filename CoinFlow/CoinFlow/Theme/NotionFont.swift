@@ -8,6 +8,7 @@
 //  本 App 是中文优先，全用 PingFangSC 显式声明字重避免回退到系统默认。
 
 import SwiftUI
+import UIKit
 
 enum NotionFont {
     static func title()    -> Font { .custom("PingFangSC-Semibold", size: 36) }
@@ -25,5 +26,25 @@ enum NotionFont {
     }
     static func amountBold(size: CGFloat = 15) -> Font {
         .system(size: size, weight: .semibold, design: .rounded).monospacedDigit()
+    }
+
+    /// UIKit 等价（金额加粗 · monospaced 数字 · rounded design）。
+    /// 供 AmountTextFieldUIKit 使用——SwiftUI Font 无法直接转 UIFont，必须分别声明。
+    static func amountBoldUIKit(size: CGFloat = 15) -> UIFont {
+        let base = UIFont.systemFont(ofSize: size, weight: .semibold)
+        let descriptor = base.fontDescriptor
+            .withDesign(.rounded)?
+            .addingAttributes([
+                .featureSettings: [
+                    [
+                        UIFontDescriptor.FeatureKey.type: kNumberSpacingType,
+                        UIFontDescriptor.FeatureKey.selector: kMonospacedNumbersSelector,
+                    ]
+                ]
+            ])
+        if let d = descriptor {
+            return UIFont(descriptor: d, size: size)
+        }
+        return base
     }
 }

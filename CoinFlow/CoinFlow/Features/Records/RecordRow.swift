@@ -71,7 +71,8 @@ struct RecordRow: View {
             Text(amountText)
                 .font(NotionFont.amount(size: 17))
                 .foregroundStyle(amountColor)
-                .lineLimit(1)
+                // 全局规则：金额超宽时等比例缩小，禁止截断/换行
+                .amountAutoFit(base: 17)
             HStack(spacing: NotionTheme.space2) {
                 if record.syncStatus != .synced {
                     Circle()
