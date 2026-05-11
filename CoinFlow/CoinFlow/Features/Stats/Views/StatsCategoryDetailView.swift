@@ -190,10 +190,6 @@ struct StatsCategoryDetailView: View {
             HStack {
                 BackButton()
                 Spacer()
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(Color.inkSecondary)
-                    .frame(width: 36, height: 36)
             }
         }
         .padding(.horizontal, NotionTheme.space4)

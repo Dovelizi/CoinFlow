@@ -15,8 +15,7 @@ struct StatsMainView: View {
     var body: some View {
         VStack(spacing: 0) {
             StatsSubNavBar(title: "统计",
-                           subtitle: StatsFormat.ymSubtitle(vm.month),
-                           trailingIcon: "square.and.arrow.up")
+                           subtitle: StatsFormat.ymSubtitle(vm.month))
             ScrollView {
                 VStack(spacing: NotionTheme.space7) {
                     summarySection

@@ -12,6 +12,7 @@ import Charts
 struct StatsHourlyView: View {
     @StateObject private var vm = StatsViewModel()
     @Environment(\.colorScheme) private var scheme
+    @State private var showMonthPicker = false
 
     private var maxHourly: Double {
         vm.hourlyDistribution.map { ($0.amount as NSDecimalNumber).doubleValue }.max() ?? 1
@@ -30,7 +31,9 @@ struct StatsHourlyView: View {
         VStack(spacing: 0) {
             StatsSubNavBar(title: "时段分布",
                            subtitle: "\(StatsFormat.ymSubtitle(vm.month)) · 24 小时",
-                           trailingIcon: "calendar")
+                           trailingIcon: "calendar",
+                           trailingAction: { showMonthPicker = true },
+                           trailingAccessibility: "切换月份")
             ScrollView {
                 VStack(spacing: NotionTheme.space7) {
                     if totalHourly > 0 {
@@ -51,6 +54,9 @@ struct StatsHourlyView: View {
         .background(ThemedBackgroundLayer(kind: .stats))
         .navigationBarHidden(true)
         .onAppear { vm.reload() }
+        .sheet(isPresented: $showMonthPicker) {
+            HourlyMonthPickerSheet(selected: $vm.month)
+        }
     }
 
     private var insightTop: some View {
@@ -196,5 +202,53 @@ struct StatsHourlyView: View {
         }
         .padding(.horizontal, NotionTheme.space5)
         .padding(.vertical, 12)
+    }
+}
+
+// MARK: - 月份选择器 Sheet
+//
+// 时段分布页支持任意月份回看。这里提供"近 24 个月"列表（按月倒序）。
+// 选中后通过 @Binding 写回 vm.month → didSet 自动 reload。
+
+private struct HourlyMonthPickerSheet: View {
+    @Binding var selected: YearMonth
+    @Environment(\.dismiss) private var dismiss
+
+    private var months: [YearMonth] {
+        let now = YearMonth.current
+        return (0..<24).map { now.adding(months: -$0) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(months, id: \.idString) { ym in
+                    Button {
+                        selected = ym
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Text(StatsFormat.ymSubtitle(ym))
+                                .font(NotionFont.body())
+                                .foregroundStyle(Color.inkPrimary)
+                            Spacer()
+                            if ym == selected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.accentBlue)
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("选择月份")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("取消") { dismiss() }
+                }
+            }
+        }
     }
 }

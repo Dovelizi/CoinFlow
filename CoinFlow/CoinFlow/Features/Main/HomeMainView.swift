@@ -246,7 +246,7 @@ struct HomeMainView: View {
                 miniKPI("今日", "\(vm.todayCount) 笔", Color.inkPrimary)
             }
             .padding(.horizontal, NotionTheme.space5)
-            .padding(.vertical, NotionTheme.space4)
+            .padding(.vertical, NotionTheme.space6)
             .cardSurface(cornerRadius: 14, notionFill: Color.hoverBgStrong)
         }
     }

@@ -16,6 +16,7 @@ import SwiftUI
 struct StatsAABalanceView: View {
     @StateObject private var vm = StatsViewModel()
     @Environment(\.colorScheme) private var scheme
+    @State private var showAddMember = false
 
     /// 是否存在任何带 participants 的 record（AA 入口已经被使用过）。
     private var hasAARecords: Bool {
@@ -28,7 +29,9 @@ struct StatsAABalanceView: View {
         VStack(spacing: 0) {
             StatsSubNavBar(title: "AA 账本",
                            subtitle: hasAARecords ? "本月共享账单" : "等待启用",
-                           trailingIcon: "person.badge.plus")
+                           trailingIcon: "person.badge.plus",
+                           trailingAction: { showAddMember = true },
+                           trailingAccessibility: "添加 AA 成员")
             ScrollView {
                 VStack(spacing: NotionTheme.space7) {
                     v2Banner
@@ -46,6 +49,9 @@ struct StatsAABalanceView: View {
         .background(ThemedBackgroundLayer(kind: .stats))
         .navigationBarHidden(true)
         .onAppear { vm.reload() }
+        .sheet(isPresented: $showAddMember) {
+            AAMemberAddSheet()
+        }
     }
 
     private var v2Banner: some View {
@@ -99,5 +105,108 @@ struct StatsAABalanceView: View {
                     .fill(Color.hoverBg.opacity(0.5))
             )
         }
+    }
+}
+
+// MARK: - 添加 AA 成员 Sheet
+//
+// 当前阶段（M1-M7）AA 账本字段虽建表但无完整数据流，无法真正"添加成员"并落库。
+// "简洁优先"：sheet 内只做"V2 内测预约"占位 + 演示性输入框，避免假数据/假交互。
+// 用户填了昵称会被保存到 UserDefaults 作为下次默认值，等 V2 上线时无缝迁移。
+
+private struct AAMemberAddSheet: View {
+    @AppStorage("aa.preview.nicknames") private var nicknames: String = ""
+    @State private var input: String = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private var savedList: [String] {
+        nicknames
+            .split(separator: ",")
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "info.circle.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.accentBlue)
+                        Text("AA 账本将在 V2 开放：创建账本 / 邀请成员 / 自动结算。先收集您的常用 AA 伙伴，V2 上线后会自动同步。")
+                            .font(NotionFont.small())
+                            .foregroundStyle(Color.inkSecondary)
+                    }
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("V2 即将上线")
+                }
+
+                Section("添加常用 AA 伙伴") {
+                    HStack {
+                        Image(systemName: "person.crop.circle.fill")
+                            .foregroundStyle(Color.inkTertiary)
+                        TextField("输入昵称", text: $input)
+                            .submitLabel(.done)
+                            .onSubmit { addNickname() }
+                        Button {
+                            addNickname()
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 20))
+                                .foregroundStyle(input.trimmingCharacters(in: .whitespaces).isEmpty
+                                                 ? Color.inkTertiary
+                                                 : Color.accentBlue)
+                        }
+                        .disabled(input.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                }
+
+                if !savedList.isEmpty {
+                    Section("已添加（\(savedList.count) 人）") {
+                        ForEach(savedList, id: \.self) { name in
+                            HStack {
+                                Image(systemName: "person.fill")
+                                    .foregroundStyle(Color.accentPurple)
+                                Text(name)
+                                Spacer()
+                                Button {
+                                    remove(name)
+                                } label: {
+                                    Image(systemName: "minus.circle.fill")
+                                        .foregroundStyle(Color.inkTertiary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("AA 成员")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func addNickname() {
+        let name = input.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        var arr = savedList
+        guard !arr.contains(name) else {
+            input = ""
+            return
+        }
+        arr.append(name)
+        nicknames = arr.joined(separator: ",")
+        input = ""
+    }
+
+    private func remove(_ name: String) {
+        let arr = savedList.filter { $0 != name }
+        nicknames = arr.joined(separator: ",")
     }
 }

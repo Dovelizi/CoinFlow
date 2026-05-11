@@ -30,7 +30,7 @@ struct InlineStatsBar: View {
                     : DirectionColor.amountForeground(kind: .expense))
         }
         .padding(.horizontal, NotionTheme.space5)
-        .padding(.vertical, NotionTheme.space4)
+        .padding(.vertical, NotionTheme.space6)
         .frame(maxWidth: .infinity)
         .cardSurface(cornerRadius: 14, notionFill: Color.hoverBgStrong)
     }

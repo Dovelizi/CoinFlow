@@ -10,6 +10,7 @@ import SwiftUI
 struct StatsWordCloudView: View {
     @StateObject private var vm = StatsViewModel()
     @Environment(\.colorScheme) private var scheme
+    @State private var showSearch = false
 
     /// 词云原始数据保留 categoryId，用于点击跳转到分类详情页。
     private var categoryWords: [(id: String, word: String, weight: Int, color: NotionColor)] {
@@ -29,7 +30,9 @@ struct StatsWordCloudView: View {
         VStack(spacing: 0) {
             StatsSubNavBar(title: "分类词云",
                            subtitle: "\(StatsFormat.ymSubtitle(vm.month)) · 分类支出",
-                           trailingIcon: "magnifyingglass")
+                           trailingIcon: "magnifyingglass",
+                           trailingAction: { showSearch = true },
+                           trailingAccessibility: "搜索分类")
             ScrollView {
                 VStack(spacing: NotionTheme.space7) {
                     if vm.expenseCategorySlices.isEmpty {
@@ -49,6 +52,10 @@ struct StatsWordCloudView: View {
         .background(ThemedBackgroundLayer(kind: .stats))
         .navigationBarHidden(true)
         .onAppear { vm.reload() }
+        .sheet(isPresented: $showSearch) {
+            StatsCategorySearchSheet(allSlices: vm.expenseCategorySlices,
+                                     scheme: scheme)
+        }
     }
 
     private var cloudCard: some View {
@@ -240,5 +247,140 @@ struct StatsScatteredFlowLayout: Layout {
             rows.append(Row(items: currentRow, maxHeight: currentMaxH))
         }
         return rows
+    }
+}
+
+// MARK: - 分类搜索 Sheet
+//
+// 使用：词云页右上角 magnifyingglass → 弹出此 sheet
+// 功能：实时模糊匹配本月支出分类名 → 点击跳转分类详情
+//      （注：搜索结果不参与跳转 navigation stack；通过关闭 sheet 后回到词云页，
+//        如果用户想进入分类详情，引导他点击底部"分类排行"列表，避免 sheet 内 push
+//        带来的导航栈混乱。这里 sheet 的角色是"快速定位"。）
+
+struct StatsCategorySearchSheet: View {
+    let allSlices: [StatsCategorySlice]
+    let scheme: ColorScheme
+    @State private var query: String = ""
+    @Environment(\.dismiss) private var dismiss
+
+    private var results: [StatsCategorySlice] {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return allSlices }
+        return allSlices.filter { $0.name.localizedCaseInsensitiveContains(q) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                searchField
+                    .padding(.horizontal, NotionTheme.space5)
+                    .padding(.top, NotionTheme.space5)
+                    .padding(.bottom, NotionTheme.space4)
+
+                if results.isEmpty {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Color.inkTertiary)
+                        Text("没有匹配的分类")
+                            .font(NotionFont.small())
+                            .foregroundStyle(Color.inkSecondary)
+                    }
+                    Spacer()
+                } else {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            ForEach(Array(results.enumerated()), id: \.element.id) { idx, cat in
+                                NavigationLink(value: CategoryDetailTarget(categoryId: cat.id)) {
+                                    resultRow(cat)
+                                }
+                                .buttonStyle(.pressableSoft)
+                                if idx < results.count - 1 {
+                                    Rectangle().fill(Color.divider).frame(height: 0.5)
+                                        .padding(.leading, NotionTheme.space5 + 28 + NotionTheme.space4)
+                                }
+                            }
+                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
+                                .fill(Color.hoverBg.opacity(0.5))
+                        )
+                        .padding(.horizontal, NotionTheme.space5)
+                    }
+                }
+            }
+            .background(Color.appCanvas)
+            .navigationTitle("搜索分类")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+            .navigationDestination(for: CategoryDetailTarget.self) { target in
+                StatsCategoryDetailView(preferredCategoryId: target.categoryId)
+            }
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.inkTertiary)
+            TextField("输入分类名（如：餐饮、交通）", text: $query)
+                .font(NotionFont.body())
+                .foregroundStyle(Color.inkPrimary)
+                .submitLabel(.search)
+            if !query.isEmpty {
+                Button {
+                    query = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.inkTertiary)
+                }
+            }
+        }
+        .padding(.horizontal, NotionTheme.space4)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: NotionTheme.radiusMD)
+                .fill(Color.hoverBg)
+        )
+    }
+
+    @ViewBuilder
+    private func resultRow(_ cat: StatsCategorySlice) -> some View {
+        HStack(spacing: NotionTheme.space4) {
+            ZStack {
+                RoundedRectangle(cornerRadius: NotionTheme.radiusMD)
+                    .fill(cat.tone.background(scheme))
+                Image(systemName: cat.icon)
+                    .font(.system(size: 13))
+                    .foregroundStyle(cat.tone.text(scheme))
+            }
+            .frame(width: 28, height: 28)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(cat.name)
+                    .font(NotionFont.bodyBold())
+                    .foregroundStyle(Color.inkPrimary)
+                Text("\(cat.count) 笔 · \(Int(cat.percentage * 100))%")
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.inkSecondary)
+            }
+            Spacer()
+            Text("¥" + StatsFormat.intGrouped(cat.amount))
+                .font(.system(size: 13, weight: .medium, design: .rounded).monospacedDigit())
+                .foregroundStyle(Color.inkSecondary)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.inkTertiary)
+        }
+        .padding(.horizontal, NotionTheme.space5)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
     }
 }

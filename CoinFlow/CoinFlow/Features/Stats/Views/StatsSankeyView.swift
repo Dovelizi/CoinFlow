@@ -15,8 +15,7 @@ struct StatsSankeyView: View {
     var body: some View {
         VStack(spacing: 0) {
             StatsSubNavBar(title: "资金流向",
-                           subtitle: StatsFormat.ymSubtitle(vm.month),
-                           trailingIcon: "square.and.arrow.up")
+                           subtitle: StatsFormat.ymSubtitle(vm.month))
             ScrollView {
                 VStack(spacing: NotionTheme.space7) {
                     if vm.incomeCategorySlices.isEmpty || vm.expenseCategorySlices.isEmpty {

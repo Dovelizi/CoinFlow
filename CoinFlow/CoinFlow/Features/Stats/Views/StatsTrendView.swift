@@ -33,8 +33,7 @@ struct StatsTrendView: View {
     var body: some View {
         VStack(spacing: 0) {
             StatsSubNavBar(title: "趋势曲线",
-                           subtitle: "近 \(range.rawValue)",
-                           trailingIcon: "square.and.arrow.up")
+                           subtitle: "近 \(range.rawValue)")
             ScrollView {
                 VStack(spacing: NotionTheme.space7) {
                     rangeSwitcher

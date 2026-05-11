@@ -17,6 +17,12 @@ import SwiftUI
 struct StatsBudgetView: View {
     @StateObject private var vm = StatsViewModel()
     @Environment(\.colorScheme) private var scheme
+    @State private var showSettings = false
+
+    /// 用户自定义月度总预算；nil = 使用启发式估算。
+    /// 持久化键：以"yyyy-MM"为粒度，避免修改本月不影响下月。
+    @AppStorage("stats.budget.custom.totalAmount") private var customTotalAmountStr: String = ""
+    @AppStorage("stats.budget.custom.month") private var customTotalMonth: String = ""
 
     private var todayDay: Int {
         Calendar.current.component(.day, from: Date())
@@ -25,6 +31,15 @@ struct StatsBudgetView: View {
         Calendar.current.range(of: .day, in: .month, for: Date())?.count ?? 30
     }
     private var daysLeft: Int { max(0, daysInMonth - todayDay) }
+
+    /// 当前月份的自定义总预算；非本月或未设置 → nil。
+    private var customTotalForCurrentMonth: Decimal? {
+        guard customTotalMonth == vm.month.idString,
+              !customTotalAmountStr.isEmpty,
+              let v = Decimal(string: customTotalAmountStr),
+              v > 0 else { return nil }
+        return v
+    }
 
     /// 启发式预算：上月同分类支出 × 1.1，并按当前实际支出向上对齐到 100 元整。
     /// 上月无数据的分类用本月支出 × 1.2 兜底。
@@ -53,7 +68,9 @@ struct StatsBudgetView: View {
     }
 
     private var totalBudget: Decimal {
-        categoryBudgets.map(\.budget).reduce(0, +)
+        // 用户自定义总预算优先；否则用启发式估算之和。
+        if let custom = customTotalForCurrentMonth { return custom }
+        return categoryBudgets.map(\.budget).reduce(0, +)
     }
     private var totalUsed: Decimal { vm.monthlyExpense }
     private var totalPct: Double {
@@ -71,7 +88,9 @@ struct StatsBudgetView: View {
         VStack(spacing: 0) {
             StatsSubNavBar(title: "本月预算",
                            subtitle: StatsFormat.ymSubtitle(vm.month),
-                           trailingIcon: "slider.horizontal.3")
+                           trailingIcon: "slider.horizontal.3",
+                           trailingAction: { showSettings = true },
+                           trailingAccessibility: "预算设置")
             ScrollView {
                 VStack(spacing: NotionTheme.space7) {
                     if vm.expenseCategorySlices.isEmpty {
@@ -95,14 +114,24 @@ struct StatsBudgetView: View {
         .background(ThemedBackgroundLayer(kind: .stats))
         .navigationBarHidden(true)
         .onAppear { vm.reload() }
+        .sheet(isPresented: $showSettings) {
+            BudgetSettingsSheet(
+                monthId: vm.month.idString,
+                estimatedTotal: categoryBudgets.map(\.budget).reduce(0, +),
+                customAmountStr: $customTotalAmountStr,
+                customMonth: $customTotalMonth
+            )
+        }
     }
 
     private var autoEstimateBanner: some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles")
+            Image(systemName: customTotalForCurrentMonth != nil ? "checkmark.seal.fill" : "sparkles")
                 .font(.system(size: 12))
                 .foregroundStyle(Color.accentBlue)
-            Text("预算根据上月支出 × 1.1 自动估算 · 自定义预算 V2 开放")
+            Text(customTotalForCurrentMonth != nil
+                 ? "已使用自定义月度总预算 · 可点击右上角调整"
+                 : "预算根据上月支出 × 1.1 自动估算 · 点击右上角自定义")
                 .font(NotionFont.micro())
                 .foregroundStyle(Color.inkSecondary)
             Spacer(minLength: 0)
@@ -299,5 +328,94 @@ struct StatsBudgetView: View {
 
     private var vDivider: some View {
         Rectangle().fill(Color.divider).frame(width: 0.5, height: 28)
+    }
+}
+
+// MARK: - 预算设置 Sheet
+//
+// "简洁优先"原则：M7 阶段只支持自定义"月度总预算"。分类预算等真实预算系统（V2）上线再说。
+// 自定义值持久化到 UserDefaults（按月独立），方便用户切换月份后看到对应的预算。
+
+private struct BudgetSettingsSheet: View {
+    let monthId: String
+    let estimatedTotal: Decimal
+    @Binding var customAmountStr: String
+    @Binding var customMonth: String
+
+    @State private var input: String = ""
+    @Environment(\.dismiss) private var dismiss
+
+    /// 当前是否已自定义本月预算
+    private var isCurrentlyCustomized: Bool {
+        customMonth == monthId && !customAmountStr.isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    HStack {
+                        Text("¥")
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.inkSecondary)
+                        TextField("输入月度总预算", text: $input)
+                            .keyboardType(.numberPad)
+                            .font(.system(size: 17, weight: .semibold, design: .rounded).monospacedDigit())
+                    }
+                } header: {
+                    Text("月度总预算")
+                } footer: {
+                    Text("自定义后将覆盖系统启发式估算（上月支出 × 1.1）")
+                }
+
+                Section("当前自动估算") {
+                    HStack {
+                        Text("¥" + StatsFormat.intGrouped(estimatedTotal))
+                            .font(.system(size: 15, weight: .medium, design: .rounded).monospacedDigit())
+                            .foregroundStyle(Color.inkPrimary)
+                        Spacer()
+                        Button("使用此估算") {
+                            input = (estimatedTotal as NSDecimalNumber).stringValue
+                        }
+                        .font(NotionFont.small())
+                    }
+                }
+
+                if isCurrentlyCustomized {
+                    Section {
+                        Button(role: .destructive) {
+                            customAmountStr = ""
+                            customMonth = ""
+                            dismiss()
+                        } label: {
+                            Text("清除自定义预算")
+                        }
+                    }
+                }
+            }
+            .navigationTitle("预算设置")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("保存") { save() }
+                        .disabled(Decimal(string: input.trimmingCharacters(in: .whitespaces))
+                                    .map { $0 <= 0 } ?? true)
+                }
+            }
+            .onAppear {
+                if isCurrentlyCustomized { input = customAmountStr }
+            }
+        }
+    }
+
+    private func save() {
+        let trimmed = input.trimmingCharacters(in: .whitespaces)
+        guard let v = Decimal(string: trimmed), v > 0 else { return }
+        customAmountStr = (v as NSDecimalNumber).stringValue
+        customMonth = monthId
+        dismiss()
     }
 }

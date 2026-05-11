@@ -36,6 +36,8 @@ SOURCE_FILES: list[str] = [
     "Theme/NotionTheme.swift",
     "Theme/NotionTheme+Aliases.swift",
     "Theme/NotionFont.swift",
+    "Theme/Motion.swift",
+    "Theme/PressableButtonStyle.swift",
     "Theme/KeyboardDoneToolbar.swift",
     "Theme/AmountTintStore.swift",
     "Config/AppConfig.swift",
@@ -61,6 +63,8 @@ SOURCE_FILES: list[str] = [
     "Features/Common/AmountTextStyle.swift",
     "Features/Common/AmountInputGate.swift",
     "Features/Common/AmountTextFieldUIKit.swift",
+    "Features/Common/NoteTextFieldUIKit.swift",
+    "Features/Common/KeyboardAccessoryToolbar.swift",
     "Features/Common/DateGrouping.swift",
     "Features/Records/RecordsListViewModel.swift",
     "Features/Records/RecordsListView.swift",
@@ -116,6 +120,7 @@ SOURCE_FILES: list[str] = [
     "Theme/NotionColor.swift",
     "Features/Stats/StatsViewModel.swift",
     "Features/Stats/StatsAnalysisHostView.swift",
+    "Features/Stats/StatsShareCard.swift",
     "Features/Stats/Views/StatsMainView.swift",
     "Features/Stats/Views/StatsTrendView.swift",
     "Features/Stats/Views/StatsYearView.swift",
@@ -153,6 +158,7 @@ SOURCE_FILES: list[str] = [
     "App/AppState.swift",
     # Theme — Dark Glass 主题（原文件未注册到脚本，2026-05-10 补回）
     "Theme/LiquidGlassATheme.swift",
+    "Theme/LiquidGlassRealTheme.swift",
     # Common 工具（原未注册）
     "Features/Common/TabBarVisibility.swift",
     "Features/Common/InteractivePopEnabler.swift",

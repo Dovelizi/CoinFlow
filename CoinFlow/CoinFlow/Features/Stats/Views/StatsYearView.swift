@@ -29,8 +29,7 @@ struct StatsYearView: View {
     var body: some View {
         VStack(spacing: 0) {
             StatsSubNavBar(title: "年度回顾",
-                           subtitle: subtitle,
-                           trailingIcon: "square.and.arrow.up")
+                           subtitle: subtitle)
             ScrollView {
                 VStack(spacing: NotionTheme.space7) {
                     yearSummary
