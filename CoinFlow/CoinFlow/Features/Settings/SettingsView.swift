@@ -50,6 +50,8 @@ struct SettingsView: View {
     @State private var privacyAmountMask: Bool = false
     /// 首次启动日期 → "加入 N 天"副标题
     @State private var joinedDaysText: String = ""
+    /// “系统配置”页跳转状态
+    @State private var showSystemConfig: Bool = false
 
     private var biometricKind: BiometricKind {
         BiometricAuthService.shared.availableKind
@@ -109,6 +111,7 @@ struct SettingsView: View {
         .onAppear { loadFromStorage() }
         .navigationBarHidden(true)
         .enableInteractivePop()
+        .hideTabBar(if: !embeddedInTab)
         .navigationDestination(isPresented: $showBackTapDoc) {
             BackTapSetupView()
         }
@@ -126,6 +129,9 @@ struct SettingsView: View {
         }
         .navigationDestination(isPresented: $showAppearancePage) {
             AppearanceSettingsView()
+        }
+        .navigationDestination(isPresented: $showSystemConfig) {
+            SystemConfigView()
         }
     }
 
@@ -293,8 +299,31 @@ struct SettingsView: View {
     private var accountSection: some View {
         SettingsSection(title: "账户与安全", icon: "person.crop.circle") {
             VStack(spacing: 0) {
+                navRow(
+                    icon: "key",
+                    title: "系统配置",
+                    rightText: systemConfigRightText,
+                    accessibilityHint: "编辑 LLM 与飞书 API 凭据"
+                ) {
+                    showSystemConfig = true
+                }
+                rowDivider
                 biometricRow
             }
+        }
+    }
+
+    /// 右侧状态提示：未配置 / 仅飞书 / 仅 LLM / 全部
+    private var systemConfigRightText: String {
+        let s = SystemConfigStore.shared
+        let feishu = s.isFeishuConfigured
+        let text   = s.isTextConfigured
+        let vision = s.isVisionConfigured
+        switch (feishu, text || vision) {
+        case (false, false): return "未配置"
+        case (true, false):  return "仅飞书"
+        case (false, true):  return "仅 LLM"
+        case (true, true):   return "已配置"
         }
     }
 
@@ -547,9 +576,19 @@ struct SettingsView: View {
                     voiceFieldToggle("category", label: "分类", icon: "folder")
                 }
                 .padding(.bottom, 6)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .clipped()
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .top).combined(with: .opacity),
+                        removal: .move(edge: .top).combined(with: .opacity)
+                    )
+                )
             }
         }
+        // 让外层 VStack 在子项 insertion/removal 时裁剪掉滑出可视区的部分，
+        // 视觉效果即"从触发行下方向下伸展"的手风琴动画。
+        .clipped()
     }
 
     /// 折叠时副标题文案：当前已勾选字段数 / 总数

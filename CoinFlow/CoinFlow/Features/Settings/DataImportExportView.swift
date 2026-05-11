@@ -55,6 +55,7 @@ struct DataImportExportView: View {
             }
         }
         .navigationBarHidden(true)
+        .hideTabBar()
         .onAppear { loadCount() }
         .sheet(item: $exportShareItem) { item in
             ShareSheet(items: [item.url])

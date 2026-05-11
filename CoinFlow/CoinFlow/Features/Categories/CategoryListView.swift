@@ -59,6 +59,7 @@ struct CategoryListView: View {
             }
         }
         .navigationBarHidden(true)
+        .hideTabBar()
         .onAppear { load() }
         .sheet(isPresented: $showAddSheet) {
             AddCategorySheet(onSaved: {

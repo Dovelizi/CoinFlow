@@ -55,6 +55,7 @@ struct StatsWordCloudView: View {
         }
         .background(ThemedBackgroundLayer(kind: .stats))
         .navigationBarHidden(true)
+        .hideTabBar()
         .onAppear { vm.reload() }
         .sheet(isPresented: $showSearch) {
             StatsCategorySearchSheet(allSlices: vm.expenseCategorySlices,

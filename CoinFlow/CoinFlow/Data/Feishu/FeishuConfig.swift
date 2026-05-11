@@ -13,40 +13,26 @@ import Foundation
 
 enum FeishuConfig {
 
-    /// Config.plist key 定义。
-    enum Key {
-        static let appID     = "Feishu_App_ID"
-        static let appSecret = "Feishu_App_Secret"
-        /// Wiki 模式：Wiki 页面 URL 中 /wiki/<这段> 的部分
-        static let wikiNodeToken = "Feishu_Wiki_Node_Token"
-        /// Wiki 模式：表格 URL 中 ?table=<这段> 的部分
-        static let billsTableId  = "Feishu_Bills_Table_Id"
-        /// 自动建表模式 fallback：创建位置；空 = "我的空间"根目录
-        static let folderToken = "Feishu_Folder_Token"
-        /// M9-Fix3：用户 open_id；建表后 App 自动给该用户加 full_access 协作者权限
-        static let ownerOpenID = "Feishu_Owner_Open_ID"
-    }
+    // MARK: - 用户配置（来自 SystemConfigStore，App 内可改）
 
-    // MARK: - 静态配置（来自 Config.plist）
-
-    static var appID: String { plistString(Key.appID) }
-    static var appSecret: String { plistString(Key.appSecret) }
+    static var appID: String { SystemConfigStore.shared.feishuAppID }
+    static var appSecret: String { SystemConfigStore.shared.feishuAppSecret }
 
     /// Wiki 节点 token（若用户指定了 Wiki 模式）
-    static var wikiNodeToken: String { plistString(Key.wikiNodeToken) }
+    static var wikiNodeToken: String { SystemConfigStore.shared.feishuWikiNodeToken }
 
     /// Wiki 模式下用户指定的 table_id
-    static var configuredTableId: String { plistString(Key.billsTableId) }
+    static var configuredTableId: String { SystemConfigStore.shared.feishuBillsTableId }
 
     /// 自动建表模式的 folder_token
-    static var folderToken: String { plistString(Key.folderToken) }
+    static var folderToken: String { SystemConfigStore.shared.feishuFolderToken }
 
     /// 用户 open_id（建表后给此用户自动加 full_access 协作者权限）
-    static var ownerOpenID: String { plistString(Key.ownerOpenID) }
+    static var ownerOpenID: String { SystemConfigStore.shared.feishuOwnerOpenID }
 
     /// 配置是否完整（appID + appSecret 都填了）
     static var isConfigured: Bool {
-        !appID.isEmpty && !appSecret.isEmpty
+        SystemConfigStore.shared.isFeishuConfigured
     }
 
     /// 是否使用 Wiki 模式（两项都填 = Wiki 模式；否则走自动建表）
@@ -67,20 +53,34 @@ enum FeishuConfig {
     /// 多维表格 App Token（Wiki 模式下是 obj_token；自动建表模式下是 create_app 返回值）
     static var bitableAppToken: String? {
         get { UserDefaults.standard.string(forKey: udAppTokenKey) }
-        set { UserDefaults.standard.set(newValue, forKey: udAppTokenKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: udAppTokenKey)
+            NotificationCenter.default.post(name: bitableMetadataDidChange, object: nil)
+        }
     }
 
     /// 主"账单"数据表的 table_id
     static var billsTableId: String? {
         get { UserDefaults.standard.string(forKey: udTableIdKey) }
-        set { UserDefaults.standard.set(newValue, forKey: udTableIdKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: udTableIdKey)
+            NotificationCenter.default.post(name: bitableMetadataDidChange, object: nil)
+        }
     }
 
     /// 用户友好的多维表格 URL
     static var bitableURL: String? {
         get { UserDefaults.standard.string(forKey: udBitableURLKey) }
-        set { UserDefaults.standard.set(newValue, forKey: udBitableURLKey) }
+        set {
+            UserDefaults.standard.set(newValue, forKey: udBitableURLKey)
+            NotificationCenter.default.post(name: bitableMetadataDidChange, object: nil)
+        }
     }
+
+    /// bitable 元数据（app_token / table_id / url）变更通知。
+    /// 触发场景：首次 bootstrap、resetBitableCache 后重建、Wiki 模式初始化。
+    /// UI （SystemConfigView 等）可监听后实时刷新只读展示。
+    static let bitableMetadataDidChange = Notification.Name("FeishuConfig.bitableMetadataDidChange")
 
     /// 是否已经建好/关联好多维表格
     static var hasBitable: Bool {
@@ -114,6 +114,7 @@ enum FeishuConfig {
         ud.removeObject(forKey: udAppTokenKey)
         ud.removeObject(forKey: udTableIdKey)
         ud.removeObject(forKey: udBitableURLKey)
+        NotificationCenter.default.post(name: bitableMetadataDidChange, object: nil)
     }
 
     /// M10-Fix2 · 重置 summary bitable 缓存
@@ -122,17 +123,5 @@ enum FeishuConfig {
         ud.removeObject(forKey: udSummaryAppTokenKey)
         ud.removeObject(forKey: udSummaryTableIdKey)
         ud.removeObject(forKey: udSummaryBitableURLKey)
-    }
-
-    // MARK: - Private
-
-    private static func plistString(_ key: String) -> String {
-        guard let url = Bundle.main.url(forResource: "Config", withExtension: "plist"),
-              let data = try? Data(contentsOf: url),
-              let plist = try? PropertyListSerialization.propertyList(
-                from: data, format: nil
-              ) as? [String: Any],
-              let v = plist[key] as? String else { return "" }
-        return v
     }
 }

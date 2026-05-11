@@ -32,6 +32,7 @@ struct BackTapSetupView: View {
             }
         }
         .navigationBarHidden(true)
+        .hideTabBar()
     }
 
     // MARK: - Nav

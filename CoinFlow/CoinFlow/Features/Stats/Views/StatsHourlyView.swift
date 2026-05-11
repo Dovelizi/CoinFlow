@@ -57,6 +57,7 @@ struct StatsHourlyView: View {
         }
         .background(ThemedBackgroundLayer(kind: .stats))
         .navigationBarHidden(true)
+        .hideTabBar()
         .onAppear { vm.reload() }
         .sheet(isPresented: $showMonthPicker) {
             HourlyMonthPickerSheet(selected: $vm.month)

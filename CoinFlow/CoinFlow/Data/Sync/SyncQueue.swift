@@ -173,6 +173,17 @@ actor SyncQueue {
             let recordWithAttachment = try await ensureAttachmentUploaded(record: record, phase: phase)
             let newRemoteId = try await writeWithFallbacks(record: recordWithAttachment, phase: phase)
             try repo.markSynced(id: recordWithAttachment.id, remoteId: newRemoteId)
+            // M11：同步成功后删除本地截图（云端 file_token 已是唯一权威副本，省本地存储）。
+            // markSynced 的 SQL 已经把 attachment_local_path 置 NULL（仅当 remote_token 非空时），
+            // 这里只需把磁盘文件删掉。注意：仅在确实拿到 remote_token 时才删，
+            // 若上传附件失败（ensureAttachmentUploaded 不阻塞同步、只 WARN）→ remote_token 仍 nil
+            // → 保留本地图，下次 tick 重试上传。
+            if let token = recordWithAttachment.attachmentRemoteToken, !token.isEmpty,
+               let localPath = recordWithAttachment.attachmentLocalPath, !localPath.isEmpty {
+                ScreenshotStore.delete(path: localPath)
+                SyncLogger.info(phase: "attachment", recordId: record.id,
+                                "local screenshot deleted (cloud copy retained)")
+            }
             SyncLogger.info(phase: phase, recordId: record.id, "ok remoteId=\(newRemoteId)")
             return true
         } catch let e as FeishuBitableError {

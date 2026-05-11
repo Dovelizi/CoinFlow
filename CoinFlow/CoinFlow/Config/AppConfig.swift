@@ -1,9 +1,13 @@
 //  AppConfig.swift
-//  CoinFlow · M1 → M6
+//  CoinFlow
 //
-//  单例配置访问器：从 Bundle 内的 Config.plist 读取 API Key / Base URL 等。
-//  缺失文件 / 缺失 key → 返回空字符串（不崩溃），让 App 在未配置情况下也能启动到主页面，
-//  仅当真正调用对应能力（LLM / OCR / ASR）时由调用方报错。
+//  全 App 配置访问入口。内部数据源为 `SystemConfigStore`（Keychain + UserDefaults）。
+//
+//  关键约束：本类对外暴露的 API（如 `cfg.deepseekAPIKey` / `cfg.llmTextProvider`
+//  / `cfg.isLLMTextConfigured` 等）签名与语义保持不变，所以下游调用方零改动。
+//  内部把"当前激活的文本/视觉 LLM 一组配置"映射到对应 provider 的字段上：
+//  例如 `cfg.deepseekAPIKey` 在 textProvider==deepseek 时返回用户填的 textAPIKey，
+//  其他 provider 时返回空字符串。
 
 import Foundation
 
@@ -12,36 +16,6 @@ final class AppConfig {
     // MARK: - Singleton
     static let shared = AppConfig()
 
-    // MARK: - Keys
-    enum Key: String {
-        // LLM 选型
-        case llmTextProvider      = "LLM_Text_Provider"
-        case llmVisionProvider    = "LLM_Vision_Provider"
-        // DeepSeek
-        case deepseekAPIKey       = "DeepSeek_API_Key"
-        case deepseekBaseURL      = "DeepSeek_BaseURL"
-        case deepseekModel        = "DeepSeek_Model"
-        // OpenAI
-        case openAIKey            = "OpenAI_API_Key"
-        case openAIBaseURL        = "OpenAI_BaseURL"
-        case openAIModel          = "OpenAI_Model"
-        // Doubao
-        case doubaoAPIKey         = "Doubao_API_Key"
-        case doubaoBaseURL        = "Doubao_BaseURL"
-        case doubaoEndpointID     = "Doubao_Endpoint_ID"
-        case doubaoVisionEndpointID = "Doubao_Vision_Endpoint_ID"
-        // Qwen
-        case qwenAPIKey           = "Qwen_API_Key"
-        case qwenBaseURL          = "Qwen_BaseURL"
-        case qwenModel            = "Qwen_Model"
-        case qwenVisionModel      = "Qwen_Vision_Model"
-        // ModelScope（魔搭）
-        case modelScopeToken      = "ModelScope_AccessToken"
-        case modelScopeBaseURL    = "ModelScope_BaseURL"
-        case modelScopeVisionModel = "ModelScope_Vision_Model"
-        case modelScopeTextModel  = "ModelScope_Text_Model"
-    }
-
     enum LLMTextProvider: String {
         case deepseek, openai, doubao, qwen, modelscope, stub
     }
@@ -49,149 +23,146 @@ final class AppConfig {
         case qwen, doubao, openai, modelscope, stub
     }
 
-    // MARK: - Storage
-    private let dict: [String: Any]
-    let plistURL: URL?
+    // MARK: - Storage（指向新的 SystemConfigStore）
+    private let store = SystemConfigStore.shared
 
     private init() {
-        let bundle = Bundle.main
-        if let realURL = bundle.url(forResource: "Config", withExtension: "plist"),
-           let data = try? Data(contentsOf: realURL),
-           let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
-            self.dict = plist
-            self.plistURL = realURL
-        } else if let exampleURL = bundle.url(forResource: "Config.example", withExtension: "plist"),
-                  let data = try? Data(contentsOf: exampleURL),
-                  let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any] {
-            self.dict = plist
-            self.plistURL = exampleURL
-        } else {
-            self.dict = [:]
-            self.plistURL = nil
-        }
+        // 监听 store 变更（保留扩展点；当前类无可变缓存，无需特别动作）
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleStoreDidChange),
+            name: SystemConfigStore.didChangeNotification,
+            object: nil
+        )
     }
 
-    // MARK: - Typed accessors
-    func string(_ key: Key) -> String { (dict[key.rawValue] as? String) ?? "" }
-    func isConfigured(_ key: Key) -> Bool { !string(key).isEmpty }
+    @objc private func handleStoreDidChange() {
+        // no-op: 所有 getter 都直接走 store 实时读取
+    }
 
     // MARK: - LLM Text provider
 
     var llmTextProvider: LLMTextProvider {
-        LLMTextProvider(rawValue: string(.llmTextProvider).lowercased()) ?? .stub
+        LLMTextProvider(rawValue: store.textProvider.rawValue) ?? .stub
     }
 
     var isLLMTextConfigured: Bool {
-        switch llmTextProvider {
-        case .stub:       return false
-        case .deepseek:   return isConfigured(.deepseekAPIKey)
-        case .openai:     return isConfigured(.openAIKey)
-        case .doubao:     return isConfigured(.doubaoAPIKey) && isConfigured(.doubaoEndpointID)
-        case .qwen:       return isConfigured(.qwenAPIKey)
-        case .modelscope: return isConfigured(.modelScopeToken)
-        }
+        store.isTextConfigured
     }
 
     var llmVisionProvider: LLMVisionProvider {
-        LLMVisionProvider(rawValue: string(.llmVisionProvider).lowercased()) ?? .stub
+        LLMVisionProvider(rawValue: store.visionProvider.rawValue) ?? .stub
     }
 
     var isLLMVisionConfigured: Bool {
-        switch llmVisionProvider {
-        case .stub:       return false
-        case .qwen:       return isConfigured(.qwenAPIKey)
-        case .doubao:     return isConfigured(.doubaoAPIKey)
-        case .openai:     return isConfigured(.openAIKey)
-        case .modelscope: return isConfigured(.modelScopeToken)
-        }
+        store.isVisionConfigured
     }
 
     // MARK: - DeepSeek
-    var deepseekAPIKey: String { string(.deepseekAPIKey) }
-    var deepseekBaseURL: String {
-        let v = string(.deepseekBaseURL)
-        return v.isEmpty ? "https://api.deepseek.com/v1" : v
-    }
-    var deepseekModel: String {
-        let v = string(.deepseekModel)
-        return v.isEmpty ? "deepseek-v4-flash" : v
-    }
+    /// 仅当当前 textProvider == .deepseek 时返回用户填值；否则返回空，避免误用。
+    var deepseekAPIKey: String  { textKey(for: .deepseek) }
+    var deepseekBaseURL: String { textBase(for: .deepseek, fallback: "https://api.deepseek.com/v1") }
+    var deepseekModel: String   { textModel(for: .deepseek, fallback: "deepseek-v4-flash") }
 
     // MARK: - OpenAI
-    var openAIKey: String { string(.openAIKey) }
-    var openAIBaseURL: String {
-        let v = string(.openAIBaseURL)
-        return v.isEmpty ? "https://api.openai.com/v1" : v
-    }
-    var openAIModel: String {
-        let v = string(.openAIModel)
-        return v.isEmpty ? "gpt-4o-mini" : v
-    }
+    var openAIKey: String     { textKey(for: .openai) }
+    var openAIBaseURL: String { textBase(for: .openai, fallback: "https://api.openai.com/v1") }
+    var openAIModel: String   { textModel(for: .openai, fallback: "gpt-4o-mini") }
 
     // MARK: - Doubao
-    var doubaoAPIKey: String { string(.doubaoAPIKey) }
-    var doubaoBaseURL: String {
-        let v = string(.doubaoBaseURL)
-        return v.isEmpty ? "https://ark.cn-beijing.volces.com/api/v3" : v
-    }
-    var doubaoEndpointID: String       { string(.doubaoEndpointID) }
-    /// 视觉模型 ID：优先用用户在 plist 配置的 `Doubao_Vision_Endpoint_ID`
-    /// （可填火山控制台创建的 ep-xxx 推理接入点，或带版本日期的官方模型 ID）；
-    /// 空则使用官方推荐默认值 doubao-seed-2-0-lite-260215（Seed 2.0 lite 多模态旗舰，
-    /// 需先在火山控制台「开通管理」中激活该模型）
+    /// 文本：API Key + Endpoint ID（豆包在 OpenAI 兼容协议里 model 字段填 endpoint id）
+    var doubaoAPIKey: String     { textKey(for: .doubao) }
+    var doubaoBaseURL: String    { textBase(for: .doubao, fallback: "https://ark.cn-beijing.volces.com/api/v3") }
+    var doubaoEndpointID: String { textModel(for: .doubao, fallback: "") }
+    /// 视觉 Endpoint ID：当 visionProvider==.doubao 时来自用户填的 visionModel
     var doubaoVisionEndpointID: String {
-        let v = string(.doubaoVisionEndpointID)
+        guard store.visionProvider == .doubao else { return "doubao-seed-2-0-lite-260215" }
+        let v = store.visionModel
         return v.isEmpty ? "doubao-seed-2-0-lite-260215" : v
     }
 
     // MARK: - Qwen
-    var qwenAPIKey: String { string(.qwenAPIKey) }
-    var qwenBaseURL: String {
-        let v = string(.qwenBaseURL)
-        return v.isEmpty ? "https://dashscope.aliyuncs.com/compatible-mode/v1" : v
-    }
-    var qwenModel: String {
-        let v = string(.qwenModel)
-        return v.isEmpty ? "qwen-turbo" : v
-    }
+    /// 文本与视觉共享同一份 API Key；但本属性映射到"哪一组当前激活"。
+    /// `qwenAPIKey` 用作文本路径；`qwenVisionModel` 用作视觉路径，单独走 store.visionAPIKey。
+    var qwenAPIKey: String   { textKey(for: .qwen) }
+    var qwenBaseURL: String  { textBase(for: .qwen, fallback: "https://dashscope.aliyuncs.com/compatible-mode/v1") }
+    var qwenModel: String    { textModel(for: .qwen, fallback: "qwen-turbo") }
+    /// 视觉模型 ID（仅 visionProvider==.qwen 时返回用户值）
     var qwenVisionModel: String {
-        let v = string(.qwenVisionModel)
+        guard store.visionProvider == .qwen else { return "qwen-vl-ocr-2025-11-20" }
+        let v = store.visionModel
         return v.isEmpty ? "qwen-vl-ocr-2025-11-20" : v
     }
 
-    // MARK: - ModelScope（魔搭 API-Inference，OpenAI 兼容）
-    var modelScopeToken: String { string(.modelScopeToken) }
-    var modelScopeBaseURL: String {
-        let v = string(.modelScopeBaseURL)
-        return v.isEmpty ? "https://api-inference.modelscope.cn/v1" : v
+    // MARK: - ModelScope（魔搭）
+    var modelScopeToken: String   { textKey(for: .modelscope) }
+    var modelScopeBaseURL: String { textBase(for: .modelscope, fallback: "https://api-inference.modelscope.cn/v1") }
+    var modelScopeTextModel: String {
+        textModel(for: .modelscope, fallback: "moonshotai/Kimi-K2.5")
     }
     var modelScopeVisionModel: String {
-        let v = string(.modelScopeVisionModel)
+        guard store.visionProvider == .modelscope else { return "Qwen/Qwen3-VL-235B-A22B-Instruct" }
+        let v = store.visionModel
         return v.isEmpty ? "Qwen/Qwen3-VL-235B-A22B-Instruct" : v
     }
-    /// 文本 LLM 模型：默认 moonshotai/Kimi-K2.5（实测 0.24s 最快）；
-    /// 可独立改为 Qwen/Qwen3-Next-80B-A3B-Instruct / Qwen/Qwen3-VL-235B-A22B-Instruct 等
-    var modelScopeTextModel: String {
-        let v = string(.modelScopeTextModel)
-        return v.isEmpty ? "moonshotai/Kimi-K2.5" : v
-    }
 
-    // MARK: - Tencent OCR / Aliyun ASR
-    //
-    // 已于 2026-05-10 用户反馈中整体移除（删除 backend + 配置）。
-    // 历史 Record / VoiceSession 数据中残留的 ocr_api / aliyun engine 值仍可被
-    // 模型 enum 反序列化，但运行时不再有对应路径。
+    // MARK: - 视觉 LLM 直接访问入口（供 BillsVisionLLMClient 等使用）
+    /// 当前激活的视觉 LLM 凭据（由 SystemConfigStore.visionProvider 决定）
+    var visionLLMBaseURL: String { resolveVisionBaseURL() }
+    var visionLLMAPIKey: String  { store.visionAPIKey }
+    var visionLLMModel: String   { resolveVisionModel() }
 
     // MARK: - Debug
-    var sourceDescription: String {
-        guard let url = plistURL else { return "未注入（缺失 Config.plist 与 Config.example.plist）" }
-        return url.lastPathComponent
-    }
+    var sourceDescription: String { "SystemConfigStore（用户配置）" }
 
     func configurationSummary() -> [(name: String, ok: Bool)] {
         [
             ("LLM 文本 (\(llmTextProvider.rawValue))", isLLMTextConfigured),
             ("LLM 视觉 (\(llmVisionProvider.rawValue))", isLLMVisionConfigured)
         ]
+    }
+
+    // MARK: - Private helpers
+
+    /// 当当前 textProvider 等于参数 provider 时返回用户填的 apiKey；否则返回空。
+    private func textKey(for provider: LLMTextProvider) -> String {
+        guard llmTextProvider == provider else { return "" }
+        return store.textAPIKey
+    }
+
+    private func textBase(for provider: LLMTextProvider, fallback: String) -> String {
+        guard llmTextProvider == provider else { return fallback }
+        let v = store.textBaseURL
+        return v.isEmpty ? fallback : v
+    }
+
+    private func textModel(for provider: LLMTextProvider, fallback: String) -> String {
+        guard llmTextProvider == provider else { return fallback }
+        let v = store.textModel
+        return v.isEmpty ? fallback : v
+    }
+
+    private func resolveVisionBaseURL() -> String {
+        let v = store.visionBaseURL
+        if !v.isEmpty { return v }
+        switch store.visionProvider {
+        case .qwen:       return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        case .doubao:     return "https://ark.cn-beijing.volces.com/api/v3"
+        case .openai:     return "https://api.openai.com/v1"
+        case .modelscope: return "https://api-inference.modelscope.cn/v1"
+        case .stub:       return ""
+        }
+    }
+
+    private func resolveVisionModel() -> String {
+        let v = store.visionModel
+        if !v.isEmpty { return v }
+        switch store.visionProvider {
+        case .qwen:       return "qwen-vl-ocr-2025-11-20"
+        case .doubao:     return "doubao-seed-2-0-lite-260215"
+        case .openai:     return "gpt-4o"
+        case .modelscope: return "Qwen/Qwen3-VL-235B-A22B-Instruct"
+        case .stub:       return ""
+        }
     }
 }

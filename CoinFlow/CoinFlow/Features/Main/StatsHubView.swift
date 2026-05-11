@@ -33,7 +33,10 @@ struct StatsHubView: View {
     @Environment(\.colorScheme) private var scheme
 
     /// 当前位于堆栈中央的卡片下标。
-    @State private var currentIdx: Int = 0
+    /// 默认 4 = `allCards` 中 `.main`（"本月统计"）的位置；
+    /// 设计意图为打开统计 tab 即聚焦本月数据，左右滑动查看其他报告。
+    /// 注意：若调整 `allCards` 顺序，需同步更新此默认值。
+    @State private var currentIdx: Int = 4
     /// 横向拖拽偏移（由 UIKit pan catcher 驱动）
     @State private var dragOffsetX: CGFloat = 0
     /// 导航栈路径：用类型擦除的 NavigationPath 同时承载 StatsAnalysisDestination

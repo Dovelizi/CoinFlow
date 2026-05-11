@@ -34,6 +34,7 @@ struct AppearanceSettingsView: View {
         }
         .navigationTitle("主题与颜色")
         .navigationBarTitleDisplayMode(.inline)
+        .hideTabBar()
     }
 
     // MARK: - 预览卡片（Home hero + 当日合计 + 3 笔流水）

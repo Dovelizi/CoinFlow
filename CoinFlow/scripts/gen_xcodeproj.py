@@ -41,6 +41,7 @@ SOURCE_FILES: list[str] = [
     "Theme/KeyboardDoneToolbar.swift",
     "Theme/AmountTintStore.swift",
     "Config/AppConfig.swift",
+    "Config/SystemConfigStore.swift",
     "Data/Database/Schema.swift",
     "Data/Database/Migrations.swift",
     "Data/Database/DatabaseManager.swift",
@@ -108,6 +109,7 @@ SOURCE_FILES: list[str] = [
     "App/PrivacyShieldView.swift",
     "App/BiometricLockView.swift",
     "Features/Settings/SettingsView.swift",
+    "Features/Settings/SystemConfigView.swift",
     "Features/Settings/BackTapSetupView.swift",
     "Features/Capture/CoinFlowCaptureIntent.swift",
     "Features/Capture/ScreenshotInbox.swift",
@@ -199,8 +201,6 @@ TEST_FILES: list[str] = [
 # 子目录通过 SOURCE_ROOT 相对路径注册（避开 Xcode CopyPlistFile 的 group 路径解析坑）
 # --------------------------------------------------------------------------
 RESOURCE_FILES: list[str] = [
-    "Config/Config.example.plist",
-    "Config/Config.plist",
     # M10 — LLM Prompt 资源（情绪化总结 system prompt）
     "Resources/Prompts/BillsSummary.system.md",
     # M11 — App 图标（folder.assetcatalog；ASSETCATALOG_COMPILER_APPICON_NAME=AppIcon

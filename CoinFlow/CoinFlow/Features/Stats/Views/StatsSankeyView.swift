@@ -38,6 +38,7 @@ struct StatsSankeyView: View {
         }
         .background(ThemedBackgroundLayer(kind: .stats))
         .navigationBarHidden(true)
+        .hideTabBar()
         .onAppear { vm.reload() }
     }
 

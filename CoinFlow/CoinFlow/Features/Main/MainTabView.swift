@@ -192,6 +192,9 @@ struct MainTabView: View {
             )
         )
         .frame(maxWidth: .infinity)
+        // 键盘弹起时不跟随上浮，保持在屏幕底部、被键盘正常遮挡（与系统 UITabBar 一致）。
+        // 直接挂在 customTabBar 的最外层修饰链尾，不放到外层 if 分支，避免被结构调整改丢。
+        .ignoresSafeArea(.keyboard, edges: .bottom)
     }
 
     /// 拖动期间为 tab item 提供的"选中态"计算属性：

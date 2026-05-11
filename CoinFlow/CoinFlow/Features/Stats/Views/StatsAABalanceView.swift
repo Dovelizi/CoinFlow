@@ -52,6 +52,7 @@ struct StatsAABalanceView: View {
         }
         .background(ThemedBackgroundLayer(kind: .stats))
         .navigationBarHidden(true)
+        .hideTabBar()
         .onAppear { vm.reload() }
         .sheet(isPresented: $showAddMember) {
             AAMemberAddSheet()

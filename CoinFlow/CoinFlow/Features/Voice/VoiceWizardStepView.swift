@@ -433,11 +433,23 @@ struct VoiceWizardStepView: View {
                 .frame(height: 36)                         // Preview 基线高度
                 .background(
                     RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
-                        .fill(active ? Color.surfaceOverlay : Color.clear)
+                        .fill(directionActiveFill(active: active))
                 )
         }
         .buttonStyle(.pressableSoft)
         .accessibilityLabel(label)
+    }
+
+    /// 「支出/收入」active 段填色：
+    /// - liquidGlass 主题：用半透白，避免 `Color.surfaceOverlay` 在深色系统下渲染为黑色实心胶囊
+    ///   叠在玻璃面板上看起来像"黑块"
+    /// - notion / darkLiquid：维持原 `Color.surfaceOverlay`，行为完全不变
+    /// 与 NewRecordModal / StatsTrendView / SettingsView 保持同一兜底方案。
+    private func directionActiveFill(active: Bool) -> Color {
+        guard active else { return Color.clear }
+        return LGAThemeStore.shared.kind == .liquidGlass
+            ? Color.white.opacity(0.18)
+            : Color.surfaceOverlay
     }
 
     // MARK: - Field rows

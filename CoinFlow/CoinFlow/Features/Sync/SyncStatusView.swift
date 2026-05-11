@@ -27,6 +27,11 @@ struct SyncStatusView: View {
     @State private var isActioning: Bool = false
     @State private var pullState: PullState = .idle
 
+    /// 「清空云端并重新同步」流程：是否弹二次确认 / 当前阶段 / 完成提示
+    @State private var showWipeConfirm: Bool = false
+    @State private var wipePhase: AppState.WipeAndResyncPhase? = nil
+    @State private var wipeResultMessage: String? = nil
+
     private struct PendingItem: Identifiable {
         let id: String
         let title: String
@@ -45,9 +50,10 @@ struct SyncStatusView: View {
 
     // MARK: - Derived mode
 
-    private enum DisplayMode { case synced, syncing, failed }
+    private enum DisplayMode { case synced, syncing, failed, paused }
 
     private var mode: DisplayMode {
+        if !appState.syncAutoEnabled { return .paused }
         let pendingCount = appState.data.pendingCount
         if pendingCount == 0 { return .synced }
         if isActioning { return .syncing }
@@ -66,6 +72,7 @@ struct SyncStatusView: View {
                     }
                     syncMetaCard
                     pullFromFeishuCard
+                    dangerZoneCard
                 }
                 .padding(.horizontal, NotionTheme.space5)
                 .padding(.top, NotionTheme.space6)
@@ -75,7 +82,29 @@ struct SyncStatusView: View {
         }
         .background(ThemedBackgroundLayer(kind: .sync))
         .navigationBarHidden(true)
+        .hideTabBar()
         .onAppear { reload() }
+        .alert("清空云端并重新同步？", isPresented: $showWipeConfirm) {
+            Button("取消", role: .cancel) {}
+            Button("清空并重新同步", role: .destructive) {
+                triggerWipeAndResync()
+            }
+        } message: {
+            Text("将删除飞书表内全部行，再用本地账单覆盖一遍。此操作不可撤销，飞书侧自定义视图/筛选不受影响，但所有行数据会被清空。同时OCR图片可能全部丢失！！！")
+        }
+        .alert("操作完成", isPresented: Binding(
+            get: { wipeResultMessage != nil },
+            set: { if !$0 { wipeResultMessage = nil } }
+        )) {
+            Button("知道了", role: .cancel) { wipeResultMessage = nil }
+        } message: {
+            Text(wipeResultMessage ?? "")
+        }
+        .overlay {
+            if let phase = wipePhase {
+                wipeProgressOverlay(phase: phase)
+            }
+        }
     }
 
     // MARK: - Nav
@@ -127,6 +156,7 @@ struct SyncStatusView: View {
         case .synced:  return "checkmark.circle.fill"
         case .syncing: return "arrow.triangle.2.circlepath"
         case .failed:  return "exclamationmark.triangle.fill"
+        case .paused:  return "pause.circle.fill"
         }
     }
     private var heroTitle: String {
@@ -134,6 +164,7 @@ struct SyncStatusView: View {
         case .synced:  return "已同步"
         case .syncing: return "正在同步…"
         case .failed:  return "待同步"
+        case .paused:  return "已暂停同步"
         }
     }
     private var heroSubtitle: String {
@@ -149,6 +180,11 @@ struct SyncStatusView: View {
             return "正在上传 \(pending) 笔流水"
         case .failed:
             return "\(pending) 笔待上传 · 请检查网络"
+        case .paused:
+            if pending == 0 {
+                return "\(total) 笔流水仅保存在本地"
+            }
+            return "\(pending) 笔待同步 · 打开开关后自动补推"
         }
     }
     private var heroColor: Color {
@@ -156,6 +192,7 @@ struct SyncStatusView: View {
         case .synced:  return Color.statusSuccess
         case .syncing: return Color.accentBlue
         case .failed:  return Color.statusWarning
+        case .paused:  return Color.inkTertiary
         }
     }
 
@@ -305,7 +342,7 @@ struct SyncStatusView: View {
                     .foregroundStyle(Color.inkPrimary)
             }
             VStack(alignment: .leading, spacing: 6) {
-                if !appState.isSyncEligible {
+                if !appState.isFeishuConfigured {
                     Text("前置未就绪：飞书 App ID / Secret 未配置")
                         .font(NotionFont.small())
                         .foregroundStyle(Color.dangerRed)
@@ -342,12 +379,51 @@ struct SyncStatusView: View {
                 rowDivider
                 metaRow(label: "上次 tick",
                         value: appState.data.lastTickAt.map(timeText) ?? "—")
+                rowDivider
+                autoSyncToggleRow
             }
             .background(
                 RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
                     .fill(Color.hoverBg.opacity(0.5))
             )
         }
+    }
+
+    /// 「自动同步」总开关。关闭后：SyncTrigger 不再触发、UI 进入「已暂停同步」态、
+    /// 手动同步/从飞书拉取按钮置灰。重新打开后 AppState 会 fire 一次补推。
+    private var autoSyncToggleRow: some View {
+        HStack(spacing: NotionTheme.space4) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("自动同步")
+                    .font(NotionFont.body())
+                    .foregroundStyle(Color.inkSecondary)
+                Text(autoSyncSubtitle)
+                    .font(NotionFont.micro())
+                    .foregroundStyle(Color.inkTertiary)
+            }
+            Spacer()
+            Toggle("", isOn: Binding(
+                get: { appState.syncAutoEnabled },
+                set: { appState.setSyncAutoEnabled($0) }
+            ))
+            .labelsHidden()
+            .tint(Color.accentBlue)
+            .disabled(!appState.isFeishuConfigured)
+        }
+        .padding(.horizontal, NotionTheme.space5)
+        .padding(.vertical, 12)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("自动同步")
+        .accessibilityValue(appState.syncAutoEnabled ? "已开启" : "已关闭")
+    }
+
+    private var autoSyncSubtitle: String {
+        if !appState.isFeishuConfigured {
+            return "需先在「设置 · 飞书」填入 App ID / Secret"
+        }
+        return appState.syncAutoEnabled
+            ? "新增/编辑流水会自动上传到飞书"
+            : "帐单仅保存在本地，重新打开后会一次性补推"
     }
 
     private var rowDivider: some View {
@@ -482,6 +558,109 @@ struct SyncStatusView: View {
         }
     }
 
+    // MARK: - 危险操作区（清空云端并重新同步）
+
+    private var dangerZoneCard: some View {
+        VStack(alignment: .leading, spacing: NotionTheme.space4) {
+            Text("危险操作")
+                .font(.custom("PingFangSC-Semibold", size: 14))
+                .foregroundStyle(Color.dangerRed)
+                .padding(.leading, 4)
+
+            Button { showWipeConfirm = true } label: {
+                HStack(spacing: NotionTheme.space5) {
+                    Image(systemName: "trash.slash")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(wipeEnabled ? Color.dangerRed : Color.inkTertiary)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("清空云端并重新同步")
+                            .font(NotionFont.body())
+                            .foregroundStyle(wipeEnabled ? Color.dangerRed : Color.inkTertiary)
+                        Text("删除飞书表中全部数据，再用本地账单全量覆盖一次")
+                            .font(NotionFont.micro())
+                            .foregroundStyle(Color.inkTertiary)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer()
+                }
+                .padding(NotionTheme.space5)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressableSoft)
+            .disabled(!wipeEnabled)
+            .background(
+                RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
+                    .stroke(Color.dangerRed.opacity(0.4), lineWidth: 1)
+                    .background(
+                        RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
+                            .fill(Color.dangerRed.opacity(0.06))
+                    )
+            )
+            .accessibilityLabel("清空云端并重新同步")
+            .accessibilityHint("删除飞书表所有行后，用本地账单全量重传")
+        }
+    }
+
+    /// 是否可以触发 wipe：必须配置好飞书 + 当前没有正在进行的 wipe / 拉取 / 同步
+    private var wipeEnabled: Bool {
+        guard appState.isFeishuConfigured else { return false }
+        if wipePhase != nil { return false }
+        if case .pulling = pullState { return false }
+        if isActioning { return false }
+        return true
+    }
+
+    @ViewBuilder
+    private func wipeProgressOverlay(phase: AppState.WipeAndResyncPhase) -> some View {
+        ZStack {
+            Color.black.opacity(0.45).ignoresSafeArea()
+            VStack(spacing: NotionTheme.space5) {
+                ProgressView().controlSize(.large).tint(Color.accentBlue)
+                Text(wipeProgressTitle(phase))
+                    .font(.custom("PingFangSC-Semibold", size: 15))
+                    .foregroundStyle(Color.inkPrimary)
+                Text(wipeProgressSubtitle(phase))
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.inkSecondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, NotionTheme.space7)
+            .padding(.vertical, NotionTheme.space7)
+            .frame(minWidth: 240)
+            .background(
+                RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
+                    .fill(Color.appCanvas)
+            )
+        }
+        .transition(.opacity)
+    }
+
+    private func wipeProgressTitle(_ phase: AppState.WipeAndResyncPhase) -> String {
+        switch phase {
+        case .preparing:        return "准备中…"
+        case .scanningRemote:   return "扫描云端数据"
+        case .deletingRemote:   return "清理飞书表"
+        case .resettingLocal:   return "重置本地状态"
+        case .resyncing:        return "重新上传"
+        case .finished:         return "完成"
+        case .failed:           return "失败"
+        }
+    }
+
+    private func wipeProgressSubtitle(_ phase: AppState.WipeAndResyncPhase) -> String {
+        switch phase {
+        case .preparing:                            return "正在暂停自动同步"
+        case .scanningRemote:                       return "获取飞书表全部行 ID"
+        case .deletingRemote(let d, let t):         return "已删除 \(d)/\(t) 行"
+        case .resettingLocal:                       return "标记本地账单为待同步"
+        case .resyncing(let u, let t):              return "已上传 \(u)/\(t) 笔"
+        case .finished:                             return ""
+        case .failed(let msg):                      return msg
+        }
+    }
+
     // MARK: - Action bar
 
     private var actionBar: some View {
@@ -513,6 +692,7 @@ struct SyncStatusView: View {
         case .synced:  return "立即同步"
         case .syncing: return "同步中…"
         case .failed:  return "全部重试"
+        case .paused:  return "已暂停同步"
         }
     }
 
@@ -529,6 +709,29 @@ struct SyncStatusView: View {
             await MainActor.run {
                 reload()
                 isActioning = false
+            }
+        }
+    }
+
+    /// 「清空云端并重新同步」入口（用户在 Alert 上点了「清空并重新同步」后触发）。
+    private func triggerWipeAndResync() {
+        guard wipeEnabled else { return }
+        wipePhase = .preparing
+        Task {
+            let ok = await appState.wipeRemoteAndResync { phase in
+                self.wipePhase = phase
+            }
+            // 给用户看一眼"finished/failed"状态再关弹层
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            await MainActor.run {
+                let finalPhase = self.wipePhase
+                self.wipePhase = nil
+                reload()
+                if ok, case .finished(let uploaded) = finalPhase {
+                    self.wipeResultMessage = "飞书表已清空，本地 \(uploaded) 笔账单已重新上传。"
+                } else if !ok, case .failed(let msg) = finalPhase {
+                    self.wipeResultMessage = msg
+                }
             }
         }
     }

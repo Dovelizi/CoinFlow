@@ -281,11 +281,21 @@ final class SQLiteRecordRepository: RecordRepository {
 
     /// 标记同步成功。同样不写 `updated_at`（理由同 markSyncing）。
     /// 重置 `sync_attempts = 0`、清错误。
+    ///
+    /// 附件清理（节省本地存储）：当且仅当该 record 已有 `attachment_remote_token`
+    /// （= 飞书素材已存在云端副本）时，顺手把 `attachment_local_path` 置 NULL。
+    /// 调用方在调本方法**之前**应自行删除磁盘文件（ScreenshotStore.delete）。
+    /// 防御：若上传附件失败（remote_token 为 NULL）→ 保留 local_path，下次 tick 继续上传。
     func markSynced(id: String, remoteId: String) throws {
         let sql = """
         UPDATE record SET
           sync_status = 'synced', remote_id = ?, last_sync_error = NULL,
-          sync_attempts = 0
+          sync_attempts = 0,
+          attachment_local_path = CASE
+            WHEN attachment_remote_token IS NOT NULL AND attachment_remote_token <> ''
+              THEN NULL
+            ELSE attachment_local_path
+          END
         WHERE id = ?;
         """
         try db.withHandle { handle in

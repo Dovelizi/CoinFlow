@@ -86,6 +86,9 @@ enum RecordBitableMapper {
         let isDeleted = boolValue(fields[FeishuFieldName.deleted]) ?? false
         // M9-Fix5：渠道
         let merchantChannel = singleSelectValue(fields[FeishuFieldName.channel])
+        // M9-Fix7：附件 file_token——飞书拉回时回填到 attachmentRemoteToken，
+        // 详情页 RemoteAttachmentLoader 据此按需从云端拉图
+        let attachmentToken = attachmentTokenValue(fields[FeishuFieldName.attachment])
 
         let categoryId = resolveCategoryId(name: categoryName)
         let amount = NSDecimalNumber(value: amountDouble).decimalValue
@@ -116,7 +119,7 @@ enum RecordBitableMapper {
             lastSyncError: nil,
             syncAttempts: 0,
             attachmentLocalPath: nil,
-            attachmentRemoteToken: nil,
+            attachmentRemoteToken: attachmentToken,
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt
@@ -219,6 +222,18 @@ enum RecordBitableMapper {
     private static func singleSelectValue(_ v: Any?) -> String? {
         if let s = v as? String { return s }
         if let d = v as? [String: Any], let n = d["text"] as? String { return n }
+        return nil
+    }
+
+    /// 飞书附件字段返回结构：`[{"file_token": "...", "name": "...", ...}, ...]`。
+    /// 取第一个非空的 file_token；都为空则返回 nil。
+    private static func attachmentTokenValue(_ v: Any?) -> String? {
+        guard let arr = v as? [[String: Any]] else { return nil }
+        for item in arr {
+            if let t = item["file_token"] as? String, !t.isEmpty {
+                return t
+            }
+        }
         return nil
     }
 }

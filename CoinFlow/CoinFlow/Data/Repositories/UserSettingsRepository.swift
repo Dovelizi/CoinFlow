@@ -99,6 +99,10 @@ enum SettingsKey {
     /// Dark Glass 设置页"加入 N 天"副标题数据源。
     /// AppState.bootstrap() 在首次启动时写入 UTC 毫秒时间戳；SettingsView 读取计算天数差。
     static let firstLaunchDate     = "profile.first_launch_date"
+    /// 自动同步开关：true=正常同步飞书；false=暂停（新增/编辑流水仍写入本地 pending 队列，
+    /// 但不再 fire SyncTrigger；用户重新打开后会一次性把积压的 pending 推上去）。
+    /// 默认 true。
+    static let syncAutoEnabled     = "sync.auto_enabled"
 }
 
 // MARK: - 便捷 API（Bool / String 常用值）

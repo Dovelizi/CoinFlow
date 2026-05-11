@@ -316,9 +316,16 @@ actor FeishuBitableClient {
             existingItems.compactMap { $0["field_name"] as? String }
         )
 
-        // 期望的 10 个非主键字段（主键"账单描述"映射备注，不重复建）
-        // type 1=文本 2=数字 3=单选 5=日期时间 7=复选框
+        // 期望的非主键字段（主键"账单描述"映射备注，不重复建）
+        // type 1=文本 2=数字 3=单选 5=日期时间 7=复选框 17=附件
+        // 列顺序（含主键）：账单描述 / 渠道 / billId / occurredAt / amount / currency
+        //                / direction / category / source / 附件 / createdAt / updatedAt / deleted
         let desiredFields: [[String: Any]] = [
+            ["field_name": FeishuFieldName.channel,    "type": 3,
+             "property": ["options": [
+                ["name": "微信"], ["name": "支付宝"], ["name": "抖音"],
+                ["name": "银行"], ["name": "其他"]
+             ]]],
             ["field_name": FeishuFieldName.billId,     "type": 1],
             ["field_name": FeishuFieldName.occurredAt, "type": 5],
             ["field_name": FeishuFieldName.amount,     "type": 2],
@@ -334,15 +341,12 @@ actor FeishuBitableClient {
                 ["name": "手动"], ["name": "截图OCR-Vision"], ["name": "截图OCR-API"],
                 ["name": "截图OCR-LLM"], ["name": "语音-本地"], ["name": "语音-云端"]
              ]]],
-            ["field_name": FeishuFieldName.createdAt,  "type": 5],
-            ["field_name": FeishuFieldName.updatedAt,  "type": 5],
-            ["field_name": FeishuFieldName.deleted,    "type": 7],
             ["field_name": FeishuFieldName.attachment, "type": 17],
-            ["field_name": FeishuFieldName.channel,    "type": 3,
-             "property": ["options": [
-                ["name": "微信"], ["name": "支付宝"], ["name": "抖音"],
-                ["name": "银行"], ["name": "其他"]
-             ]]]
+            ["field_name": FeishuFieldName.createdAt,  "type": 5,
+             "property": ["date_formatter": "yyyy-MM-dd HH:mm:ss", "auto_fill": false]],
+            ["field_name": FeishuFieldName.updatedAt,  "type": 5,
+             "property": ["date_formatter": "yyyy-MM-dd HH:mm:ss", "auto_fill": false]],
+            ["field_name": FeishuFieldName.deleted,    "type": 7]
         ]
         for def in desiredFields {
             guard let name = def["field_name"] as? String,
@@ -495,6 +499,77 @@ actor FeishuBitableClient {
         return out
     }
 
+    // MARK: - 全量清空云端（"清空云端并重新同步"用）
+
+    /// 仅拉取所有 record_id（不带 fields），比 searchAllRecords 更省带宽与解析开销。
+    /// 飞书 search 接口 page_size 上限 500；此处取 500 上限，分页直到 has_more=false。
+    /// - Returns: 飞书侧账单表所有 record_id（含已软删的行；调用方需要的就是"所有行"）
+    func listAllRecordIds() async throws -> [String] {
+        try await ensureBitableExists()
+        guard let appToken = FeishuConfig.bitableAppToken,
+              let tableId = FeishuConfig.billsTableId else {
+            throw FeishuBitableError.bitableNotInitialized
+        }
+        var out: [String] = []
+        var pageToken: String? = nil
+        let pageSize = 500  // 飞书 search 接口允许的最大值
+        repeat {
+            var query: [String] = ["page_size=\(pageSize)"]
+            if let t = pageToken, !t.isEmpty {
+                let escaped = t.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? t
+                query.append("page_token=\(escaped)")
+            }
+            let path = "/open-apis/bitable/v1/apps/\(appToken)/tables/\(tableId)/records/search?" + query.joined(separator: "&")
+            // search 必须 POST 携带 body，即使 body 为 {}
+            let resp: [String: Any] = try await callAPI(method: "POST", path: path, body: [:])
+            if let items = resp["items"] as? [[String: Any]] {
+                for item in items {
+                    if let rid = item["record_id"] as? String, !rid.isEmpty {
+                        out.append(rid)
+                    }
+                }
+            }
+            let hasMore = (resp["has_more"] as? Bool) ?? false
+            pageToken = hasMore ? (resp["page_token"] as? String) : nil
+        } while pageToken != nil && !(pageToken?.isEmpty ?? true)
+        return out
+    }
+
+    /// 按飞书 batch_delete 接口（≤500 条/批）切片删除给定 record_id。
+    /// callAPI 内部已对 401/403/code=99991663 做自动 token 刷新重试；
+    /// transient（5xx/网络/限流）由调用方决定是否手动 retry（本方法本身不做软重试，
+    /// 因为 wipe 流程的"幂等批次"语义由上层 AppState.wipeRemoteAndResync 控制）。
+    /// - Parameter ids: 待删除的 record_id；空数组直接返回（no-op）
+    /// - Parameter onProgress: (deleted, total) 回调，可在 UI 实时刷进度
+    func batchDeleteRecords(
+        ids: [String],
+        onProgress: @Sendable (Int, Int) -> Void = { _, _ in }
+    ) async throws {
+        guard !ids.isEmpty else { return }
+        try await ensureBitableExists()
+        guard let appToken = FeishuConfig.bitableAppToken,
+              let tableId = FeishuConfig.billsTableId else {
+            throw FeishuBitableError.bitableNotInitialized
+        }
+        let chunkSize = 500
+        var deleted = 0
+        let total = ids.count
+        var idx = 0
+        while idx < total {
+            let end = min(idx + chunkSize, total)
+            let slice = Array(ids[idx..<end])
+            _ = try await callAPI(
+                method: "POST",
+                path: "/open-apis/bitable/v1/apps/\(appToken)/tables/\(tableId)/records/batch_delete",
+                body: ["records": slice]
+            ) as [String: Any]
+            deleted += slice.count
+            onProgress(deleted, total)
+            idx = end
+        }
+        SyncLogger.info(phase: "feishu.wipe", "batchDeleteRecords ok total=\(total)")
+    }
+
     // MARK: - 附件上传（M9-Fix4）
 
     /// 上传截图到飞书素材库，返回 file_token。
@@ -567,6 +642,80 @@ actor FeishuBitableClient {
             throw FeishuBitableError.decodeFailed(reason: "upload 响应缺 file_token")
         }
         return fileToken
+    }
+
+    // MARK: - 附件下载（M11）
+
+    /// 下载飞书素材库中的附件字节。
+    /// - 流程：调 `batch_get_tmp_download_url` 拿临时 URL（5min 有效）→ GET 拉 jpeg
+    /// - 失败/网络异常：抛 FeishuBitableError；调用方决定是否兜底文案
+    /// - 用途：详情页查看 OCR 截图时，本地副本已被同步流程清掉，需从云端拉
+    func downloadAttachment(fileToken: String) async throws -> Data {
+        guard !fileToken.isEmpty else {
+            throw FeishuBitableError.decodeFailed(reason: "fileToken 为空")
+        }
+        let token: String
+        do {
+            token = try await tokenManager.getToken()
+        } catch {
+            throw FeishuBitableError.authFailed(underlying: error)
+        }
+        // Step 1：拿临时 URL
+        let urlEncoded = fileToken.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? fileToken
+        let tmpURLPath = "\(host)/open-apis/drive/v1/medias/batch_get_tmp_download_url?file_tokens=\(urlEncoded)"
+        guard let tmpURL = URL(string: tmpURLPath) else {
+            throw FeishuBitableError.decodeFailed(reason: "tmp url 拼接失败")
+        }
+        var tmpReq = URLRequest(url: tmpURL)
+        tmpReq.httpMethod = "GET"
+        tmpReq.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        tmpReq.timeoutInterval = 15
+        let (tmpData, tmpResp): (Data, URLResponse)
+        do {
+            (tmpData, tmpResp) = try await session.data(for: tmpReq)
+        } catch {
+            throw FeishuBitableError.network(underlying: error)
+        }
+        guard let tmpHTTP = tmpResp as? HTTPURLResponse else {
+            throw FeishuBitableError.decodeFailed(reason: "tmp url no HTTPURLResponse")
+        }
+        let tmpBodyStr = String(data: tmpData, encoding: .utf8) ?? ""
+        if tmpHTTP.statusCode < 200 || tmpHTTP.statusCode >= 300 {
+            throw FeishuBitableError.httpStatus(code: tmpHTTP.statusCode, body: tmpBodyStr)
+        }
+        guard let tmpObj = try? JSONSerialization.jsonObject(with: tmpData) as? [String: Any] else {
+            throw FeishuBitableError.decodeFailed(reason: "tmp url JSON 解析失败")
+        }
+        let tmpCode = (tmpObj["code"] as? Int) ?? -1
+        if tmpCode != 0 {
+            let msg = (tmpObj["msg"] as? String) ?? "unknown"
+            throw FeishuBitableError.apiError(code: tmpCode, msg: msg, raw: tmpBodyStr)
+        }
+        guard let dataObj = tmpObj["data"] as? [String: Any],
+              let urlList = dataObj["tmp_download_urls"] as? [[String: Any]],
+              let firstEntry = urlList.first,
+              let downloadURLStr = firstEntry["tmp_download_url"] as? String,
+              let downloadURL = URL(string: downloadURLStr) else {
+            throw FeishuBitableError.decodeFailed(reason: "tmp_download_urls 缺失")
+        }
+        // Step 2：GET 临时 URL（自带签名，无需 Authorization 头）
+        var dlReq = URLRequest(url: downloadURL)
+        dlReq.httpMethod = "GET"
+        dlReq.timeoutInterval = 30
+        let (fileData, fileResp): (Data, URLResponse)
+        do {
+            (fileData, fileResp) = try await session.data(for: dlReq)
+        } catch {
+            throw FeishuBitableError.network(underlying: error)
+        }
+        guard let fileHTTP = fileResp as? HTTPURLResponse else {
+            throw FeishuBitableError.decodeFailed(reason: "download no HTTPURLResponse")
+        }
+        if fileHTTP.statusCode < 200 || fileHTTP.statusCode >= 300 {
+            let bodyStr = String(data: fileData, encoding: .utf8) ?? ""
+            throw FeishuBitableError.httpStatus(code: fileHTTP.statusCode, body: bodyStr)
+        }
+        return fileData
     }
 
     // MARK: - HTTP core

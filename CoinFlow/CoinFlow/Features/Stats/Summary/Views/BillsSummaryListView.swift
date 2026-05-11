@@ -84,6 +84,7 @@ struct BillsSummaryListView: View {
         }
         .onAppear { reload() }
         .navigationBarHidden(true)
+        .hideTabBar()
         .animation(Motion.snap, value: floatingSummary?.id)
     }
 

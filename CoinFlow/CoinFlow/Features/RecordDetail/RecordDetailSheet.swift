@@ -47,6 +47,7 @@ struct RecordDetailSheet: View {
                     amountField
                     categoryField
                     noteField
+                    AttachmentPreviewSection(record: vm.original)
                     metaInfo
                     deleteButton
                 }
@@ -386,5 +387,197 @@ struct RecordDetailSheet: View {
             RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
                 .fill(Color.hoverBg)
         )
+    }
+}
+
+// MARK: - AttachmentPreviewSection（M11）
+//
+// 显示规则：
+// - record.attachmentLocalPath 存在 + 磁盘命中 → 直接读本地（最快路径）
+//   * 场景：刚记账还没同步 / 同步关闭中 / 同步失败仍在重试
+// - 否则 record.attachmentRemoteToken 存在 → 从飞书拉（RemoteAttachmentLoader 双层缓存）
+//   * 场景：同步成功后本地图被 SyncQueue 主动清掉
+// - 都不满足 → 整块隐藏（手动记账无附件 / 历史数据 / 上传失败且本地丢失）
+//
+// 点击图片放大（用 SwiftUI presentation sheet + zoomable）；先做最小可用：sheet 全屏展示
+private struct AttachmentPreviewSection: View {
+    let record: Record
+
+    @State private var image: UIImage?
+    @State private var isLoading: Bool = false
+    @State private var loadFailed: Bool = false
+    @State private var showFullScreen: Bool = false
+
+    private var hasAttachment: Bool {
+        let hasLocal = (record.attachmentLocalPath?.isEmpty == false)
+            && ScreenshotStore.exists(path: record.attachmentLocalPath ?? "")
+        let hasRemote = (record.attachmentRemoteToken?.isEmpty == false)
+        return hasLocal || hasRemote
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if hasAttachment {
+            VStack(alignment: .leading, spacing: NotionTheme.space3) {
+                HStack(spacing: NotionTheme.space5) {
+                    Image(systemName: "paperclip")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(Color.inkSecondary)
+                        .frame(width: 24)
+                    Text("OCR 截图")
+                        .font(NotionFont.body())
+                        .foregroundStyle(Color.inkPrimary)
+                    Spacer()
+                }
+                imageCard
+            }
+            .padding(NotionTheme.space5)
+            .background(
+                RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
+                    .fill(Color.hoverBg)
+            )
+            .task(id: taskKey) {
+                await loadImage()
+            }
+            .sheet(isPresented: $showFullScreen) {
+                AttachmentFullScreenView(image: image)
+            }
+        } else {
+            EmptyView()
+        }
+    }
+
+    /// task id：本地路径或远端 token 变化时触发重载
+    private var taskKey: String {
+        (record.attachmentLocalPath ?? "") + "|" + (record.attachmentRemoteToken ?? "")
+    }
+
+    /// 图片底板：liquidGlass 主题下用 `.ultraThinMaterial` 真玻璃 + 半透白描边，
+    /// 避免 `Color.canvasBG`（深色实心）裸露在玻璃卡内形成"黑色矩形"突兀感；
+    /// 其他主题保留原 canvasBG 行为。
+    private var isLiquidGlass: Bool {
+        LGAThemeStore.shared.kind == .liquidGlass
+    }
+
+    @ViewBuilder
+    private var imageCard: some View {
+        ZStack {
+            // 已加载到图片时，不再绘制底板（图片自身覆盖整个区域，避免双层背景叠色）
+            if image == nil {
+                Group {
+                    if isLiquidGlass {
+                        RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
+                                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            )
+                    } else {
+                        RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
+                            .fill(Color.canvasBG)
+                    }
+                }
+                .frame(height: 160)
+            }
+
+            if let img = image {
+                HStack {
+                    Spacer(minLength: 0)
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxHeight: 200)
+                        .clipShape(RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous))
+                        // liquidGlass 下给图片一圈 hairline 描边，让它和玻璃卡有视觉分层但不至于硬切
+                        .overlay(
+                            RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
+                                .stroke(Color.white.opacity(isLiquidGlass ? 0.12 : 0.0), lineWidth: 1)
+                        )
+                        .onTapGesture {
+                            showFullScreen = true
+                        }
+                    Spacer(minLength: 0)
+                }
+            } else if isLoading {
+                ProgressView()
+                    .controlSize(.regular)
+            } else if loadFailed {
+                VStack(spacing: NotionTheme.space2) {
+                    Image(systemName: "photo.badge.exclamationmark")
+                        .font(.system(size: 28))
+                        .foregroundStyle(Color.inkTertiary)
+                    Text("图片加载失败")
+                        .font(NotionFont.small())
+                        .foregroundStyle(Color.inkTertiary)
+                    Button("重试") {
+                        Task { await loadImage(forceReload: true) }
+                    }
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.inkSecondary)
+                }
+            }
+        }
+        // 让 ZStack 占满外层卡的内容宽度，图片才能真正水平居中
+        // （外层 VStack 是 .leading，不加这个 ZStack 会缩到图片自身宽度并贴左）
+        .frame(maxWidth: .infinity)
+    }
+
+    @MainActor
+    private func loadImage(forceReload: Bool = false) async {
+        if image != nil && !forceReload { return }
+        isLoading = true
+        loadFailed = false
+        defer { isLoading = false }
+
+        // 优先本地
+        if let localPath = record.attachmentLocalPath, !localPath.isEmpty,
+           ScreenshotStore.exists(path: localPath),
+           let data = ScreenshotStore.read(path: localPath),
+           let img = UIImage(data: data) {
+            image = img
+            return
+        }
+        // 退到远端
+        if let token = record.attachmentRemoteToken, !token.isEmpty {
+            let img = await RemoteAttachmentLoader.shared.image(for: token)
+            if let img {
+                image = img
+            } else {
+                loadFailed = true
+            }
+            return
+        }
+        loadFailed = true
+    }
+}
+
+// MARK: - 全屏查看（最小可用）
+
+private struct AttachmentFullScreenView: View {
+    let image: UIImage?
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+            if let img = image {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea()
+            }
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(Color.black.opacity(0.45)))
+            }
+            .padding(.top, 12)
+            .padding(.trailing, 16)
+        }
     }
 }
