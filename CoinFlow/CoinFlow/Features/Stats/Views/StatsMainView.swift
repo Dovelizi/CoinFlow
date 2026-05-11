@@ -9,8 +9,12 @@
 import SwiftUI
 
 struct StatsMainView: View {
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
+
+    init(month: YearMonth = .current) {
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -52,7 +56,7 @@ struct StatsMainView: View {
                 let digitSize: CGFloat = 38
                 let symbolSize = digitSize * AmountSymbolStyle.symbolScale
                 let tone = toneColor(for: vm.monthlyNet)
-                let amountStr = StatsFormat.intGrouped(absDecimal(vm.monthlyNet))
+                let amountStr = StatsFormat.decimalGrouped(absDecimal(vm.monthlyNet))
                 let heroAttr: AttributedString = {
                     var a = AttributedString("¥")
                     a.font = .system(size: symbolSize, weight: .semibold, design: .rounded)
@@ -70,11 +74,11 @@ struct StatsMainView: View {
 
             HStack(spacing: NotionTheme.space5) {
                 statCell(label: "收入",
-                         text: "¥" + StatsFormat.intGrouped(vm.monthlyIncome),
+                         text: "¥" + StatsFormat.decimalGrouped(vm.monthlyIncome),
                          tone: NotionColor.green.text(scheme))
                 vDivider
                 statCell(label: "支出",
-                         text: "¥" + StatsFormat.intGrouped(vm.monthlyExpense),
+                         text: "¥" + StatsFormat.decimalGrouped(vm.monthlyExpense),
                          tone: NotionColor.red.text(scheme))
                 vDivider
                 statCell(label: "笔数",
@@ -132,9 +136,9 @@ struct StatsMainView: View {
                 }
                 let rows = makeWeekRows(leadingBlanks: leadingBlanks,
                                         days: vm.dailyExpenseInMonth.count)
-                ForEach(rows, id: \.self) { row in
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
                     HStack(spacing: 4) {
-                        ForEach(row, id: \.self) { dayOrZero in
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, dayOrZero in
                             heatCell(day: dayOrZero, max: maxAmount)
                         }
                     }
@@ -300,7 +304,7 @@ struct StatsMainView: View {
                     .foregroundStyle(Color.inkSecondary)
             }
             Spacer()
-            Text("¥" + StatsFormat.intGrouped(cat.amount))
+            Text("¥" + StatsFormat.decimalGrouped(cat.amount))
                 .font(NotionFont.amount(size: 15))
                 .foregroundStyle(DirectionColor.amountForeground(kind: .expense))
         }
@@ -372,7 +376,7 @@ struct StatsDonutChart: View {
                 Text("总支出")
                     .font(.custom("PingFangSC-Regular", size: 10))
                     .foregroundStyle(Color.inkTertiary)
-                Text("¥" + StatsFormat.intGrouped(total()))
+                Text("¥" + StatsFormat.decimalGrouped(total()))
                     .font(.system(size: 17, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.inkPrimary)
             }

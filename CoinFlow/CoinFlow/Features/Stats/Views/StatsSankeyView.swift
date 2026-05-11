@@ -9,8 +9,12 @@
 import SwiftUI
 
 struct StatsSankeyView: View {
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
+
+    init(month: YearMonth = .current) {
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -106,7 +110,7 @@ struct StatsSankeyView: View {
                 .font(NotionFont.small())
                 .foregroundStyle(Color.inkPrimary)
             Spacer()
-            Text("¥" + StatsFormat.intGrouped(amount))
+            Text("¥" + StatsFormat.decimalGrouped(amount))
                 .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
                 .foregroundStyle(Color.inkSecondary)
         }
@@ -241,7 +245,7 @@ struct StatsSankeyDiagram: View {
                 Text(label)
                     .font(.custom("PingFangSC-Semibold", size: 11))
                     .foregroundStyle(Color.inkPrimary)
-                Text("¥\((amount as NSDecimalNumber).intValue)")
+                Text("¥\(StatsFormat.decimalGrouped(amount))")
                     .font(.system(size: 10, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.inkTertiary)
             }

@@ -10,8 +10,12 @@ import SwiftUI
 import Charts
 
 struct StatsYearView: View {
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
+
+    init(month: YearMonth = .current) {
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
+    }
 
     private var totalIncome:  Decimal { vm.last12Months.map(\.income).reduce(0, +) }
     private var totalExpense: Decimal { vm.last12Months.map(\.expense).reduce(0, +) }

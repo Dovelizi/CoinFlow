@@ -12,10 +12,14 @@ import SwiftUI
 import Charts
 
 struct StatsGaugeView: View {
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
 
     private let targetRate: Double = 0.30
+
+    init(month: YearMonth = .current) {
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
+    }
 
     private var saveRate: Double {
         guard vm.monthlyIncome > 0 else { return 0 }
@@ -69,12 +73,12 @@ struct StatsGaugeView: View {
             }
 
             HStack(spacing: NotionTheme.space5) {
-                gaugeMini("收入", value: "¥" + StatsFormat.intGrouped(vm.monthlyIncome),
+                gaugeMini("收入", value: "¥" + StatsFormat.decimalGrouped(vm.monthlyIncome),
                           tone: DirectionColor.amountForeground(kind: .income))
-                gaugeMini("支出", value: "¥" + StatsFormat.intGrouped(vm.monthlyExpense),
+                gaugeMini("支出", value: "¥" + StatsFormat.decimalGrouped(vm.monthlyExpense),
                           tone: DirectionColor.amountForeground(kind: .expense))
                 gaugeMini("结余",
-                          value: "¥" + StatsFormat.intGrouped(vm.monthlyNet >= 0
+                          value: "¥" + StatsFormat.decimalGrouped(vm.monthlyNet >= 0
                                                               ? vm.monthlyNet
                                                               : 0),
                           tone: Color.inkPrimary)

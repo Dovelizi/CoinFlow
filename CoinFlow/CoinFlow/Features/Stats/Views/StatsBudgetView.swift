@@ -15,7 +15,7 @@
 import SwiftUI
 
 struct StatsBudgetView: View {
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
     @State private var showSettings = false
 
@@ -23,6 +23,10 @@ struct StatsBudgetView: View {
     /// 持久化键：以"yyyy-MM"为粒度，避免修改本月不影响下月。
     @AppStorage("stats.budget.custom.totalAmount") private var customTotalAmountStr: String = ""
     @AppStorage("stats.budget.custom.month") private var customTotalMonth: String = ""
+
+    init(month: YearMonth = .current) {
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
+    }
 
     private var todayDay: Int {
         Calendar.current.component(.day, from: Date())
@@ -165,7 +169,7 @@ struct StatsBudgetView: View {
                         .foregroundStyle(totalPct > 0.9
                                          ? NotionColor.red.text(scheme)
                                          : Color.inkPrimary)
-                    Text("¥\(StatsFormat.intGrouped(totalUsed)) / ¥\(StatsFormat.intGrouped(totalBudget))")
+                    Text("¥\(StatsFormat.decimalGrouped(totalUsed)) / ¥\(StatsFormat.decimalGrouped(totalBudget))")
                         .font(NotionFont.small())
                         .foregroundStyle(Color.inkSecondary)
                 }
@@ -173,7 +177,7 @@ struct StatsBudgetView: View {
             .padding(.top, NotionTheme.space4)
 
             HStack(spacing: NotionTheme.space5) {
-                miniCell("剩余", value: "¥" + StatsFormat.intGrouped(remaining < 0 ? -remaining : remaining),
+                miniCell("剩余", value: "¥" + StatsFormat.decimalGrouped(remaining < 0 ? -remaining : remaining),
                          tone: remaining < 0
                             ? NotionColor.red.text(scheme)
                             : Color.inkPrimary,
@@ -182,7 +186,7 @@ struct StatsBudgetView: View {
                 miniCell("剩余天数", value: "\(daysLeft)")
                 vDivider
                 miniCell("日均可用",
-                         value: remaining > 0 ? "¥" + StatsFormat.intGrouped(dailyAvail) : "—",
+                         value: remaining > 0 ? "¥" + StatsFormat.decimalGrouped(dailyAvail) : "—",
                          tone: remaining > 0 ? Color.inkPrimary : Color.inkTertiary)
             }
             .padding(NotionTheme.space5)
@@ -253,7 +257,7 @@ struct StatsBudgetView: View {
                         .background(Capsule().fill(NotionColor.red.background(scheme)))
                 }
                 Spacer()
-                Text("¥\(StatsFormat.intGrouped(used)) / ¥\(StatsFormat.intGrouped(budget))")
+                Text("¥\(StatsFormat.decimalGrouped(used)) / ¥\(StatsFormat.decimalGrouped(budget))")
                     .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.inkSecondary)
             }
@@ -293,7 +297,7 @@ struct StatsBudgetView: View {
                 .font(.system(size: 14))
                 .foregroundStyle(NotionColor.yellow.text(scheme))
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(slice.name)已超出预算 ¥\(StatsFormat.intGrouped(overAmt))")
+                Text("\(slice.name)已超出预算 ¥\(StatsFormat.decimalGrouped(overAmt))")
                     .font(.custom("PingFangSC-Semibold", size: 13))
                     .foregroundStyle(Color.inkPrimary)
                 Text("建议下月将 \(slice.name) 预算上调，或减少该分类支出")
@@ -370,7 +374,7 @@ private struct BudgetSettingsSheet: View {
 
                 Section("当前自动估算") {
                     HStack {
-                        Text("¥" + StatsFormat.intGrouped(estimatedTotal))
+                        Text("¥" + StatsFormat.decimalGrouped(estimatedTotal))
                             .font(.system(size: 15, weight: .medium, design: .rounded).monospacedDigit())
                             .foregroundStyle(Color.inkPrimary)
                         Spacer()

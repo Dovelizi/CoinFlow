@@ -8,9 +8,13 @@
 import SwiftUI
 
 struct StatsWordCloudView: View {
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
     @State private var showSearch = false
+
+    init(month: YearMonth = .current) {
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
+    }
 
     /// 词云原始数据保留 categoryId，用于点击跳转到分类详情页。
     private var categoryWords: [(id: String, word: String, weight: Int, color: NotionColor)] {
@@ -65,7 +69,7 @@ struct StatsWordCloudView: View {
                     .font(.custom("PingFangSC-Semibold", size: 14))
                     .foregroundStyle(Color.inkPrimary)
                 Spacer()
-                Text("总支出 ¥" + StatsFormat.intGrouped(totalExpense))
+                Text("总支出 ¥" + StatsFormat.decimalGrouped(totalExpense))
                     .font(NotionFont.micro())
                     .foregroundStyle(Color.inkTertiary)
             }
@@ -108,7 +112,7 @@ struct StatsWordCloudView: View {
                                 .font(NotionFont.body())
                                 .foregroundStyle(Color.inkPrimary)
                             Spacer()
-                            Text("¥" + StatsFormat.intGrouped(cat.amount))
+                            Text("¥" + StatsFormat.decimalGrouped(cat.amount))
                                 .font(.system(size: 13, weight: .medium, design: .rounded).monospacedDigit())
                                 .foregroundStyle(Color.inkSecondary)
                             Image(systemName: "chevron.right")
@@ -120,7 +124,7 @@ struct StatsWordCloudView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.pressableSoft)
-                    .accessibilityLabel("\(cat.name)，¥\(StatsFormat.intGrouped(cat.amount))，点击查看详情")
+                    .accessibilityLabel("\(cat.name)，¥\(StatsFormat.decimalGrouped(cat.amount))，点击查看详情")
                     if idx < items.count - 1 {
                         Rectangle().fill(Color.divider).frame(height: 0.5)
                             .padding(.leading, NotionTheme.space5 + 18 + NotionTheme.space4)
@@ -372,7 +376,7 @@ struct StatsCategorySearchSheet: View {
                     .foregroundStyle(Color.inkSecondary)
             }
             Spacer()
-            Text("¥" + StatsFormat.intGrouped(cat.amount))
+            Text("¥" + StatsFormat.decimalGrouped(cat.amount))
                 .font(.system(size: 13, weight: .medium, design: .rounded).monospacedDigit())
                 .foregroundStyle(Color.inkSecondary)
             Image(systemName: "chevron.right")

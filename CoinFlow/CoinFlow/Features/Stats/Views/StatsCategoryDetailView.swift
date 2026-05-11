@@ -17,14 +17,15 @@ struct StatsCategoryDetailView: View {
     /// 外部指定分类 id；nil = 用本月最大支出分类。
     let preferredCategoryId: String?
 
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
 
     /// 用户在切换器上选中的分类 id；nil 表示走默认（preferredCategoryId 或 top 1）
     @State private var selectedCategoryId: String? = nil
 
-    init(preferredCategoryId: String? = nil) {
+    init(preferredCategoryId: String? = nil, month: YearMonth = .current) {
         self.preferredCategoryId = preferredCategoryId
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
     }
 
     /// 选中的分类 slice（本月）
@@ -216,7 +217,7 @@ struct StatsCategoryDetailView: View {
                 Text("本月支出")
                     .font(NotionFont.micro())
                     .foregroundStyle(Color.inkTertiary)
-                Text("¥" + StatsFormat.intGrouped(slice.amount))
+                Text("¥" + StatsFormat.decimalGrouped(slice.amount))
                     .font(.system(size: 36, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(slice.tone.text(scheme))
             }
@@ -225,7 +226,7 @@ struct StatsCategoryDetailView: View {
                 miniStat(label: "笔数", value: "\(slice.count)")
                 vDivider
                 miniStat(label: "笔均",
-                         value: "¥" + StatsFormat.intGrouped(slice.count > 0
+                         value: "¥" + StatsFormat.decimalGrouped(slice.count > 0
                                                             ? slice.amount / Decimal(slice.count)
                                                             : 0))
                 vDivider
@@ -364,7 +365,7 @@ struct StatsCategoryDetailView: View {
                 .foregroundStyle(Color.inkPrimary)
                 .lineLimit(1)
             Spacer()
-            Text("¥" + StatsFormat.intGrouped(record.amount))
+            Text("¥" + StatsFormat.decimalGrouped(record.amount))
                 .font(NotionFont.amount(size: 14))
                 .foregroundStyle(DirectionColor.amountForeground(kind: .expense))
         }

@@ -57,11 +57,11 @@ struct StatsShareCard: View {
 
             HStack(spacing: 0) {
                 shareCell(label: "收入",
-                          text: "¥" + StatsFormat.intGrouped(income),
+                          text: "¥" + StatsFormat.decimalGrouped(income),
                           tone: .green)
                 divider
                 shareCell(label: "支出",
-                          text: "¥" + StatsFormat.intGrouped(expense),
+                          text: "¥" + StatsFormat.decimalGrouped(expense),
                           tone: .red)
                 divider
                 shareCell(label: "笔数",
@@ -134,7 +134,7 @@ struct StatsShareCard: View {
     private func formatNet(_ d: Decimal) -> String {
         let abs = d < 0 ? -d : d
         let sign = d >= 0 ? "+" : "-"
-        return "\(sign)¥\(StatsFormat.intGrouped(abs))"
+        return "\(sign)¥\(StatsFormat.decimalGrouped(abs))"
     }
 
     private static func dateString() -> String {

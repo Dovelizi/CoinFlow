@@ -12,9 +12,13 @@ import SwiftUI
 import Charts
 
 struct StatsTrendView: View {
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
     @State private var range: TrendRange = .days30
+
+    init(month: YearMonth = .current) {
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
+    }
 
     enum TrendRange: String, CaseIterable {
         case days30  = "30 天"
@@ -28,6 +32,16 @@ struct StatsTrendView: View {
         case .days90:  return vm.dailyTrend90
         case .days180: return vm.dailyTrend180
         }
+    }
+
+    /// 上下对称的 Y 轴区间：入为正、出为负，0 始终在中间。
+    private var yAxisDomain: ClosedRange<Double> {
+        let maxIncome  = trendData.map { ($0.income  as NSDecimalNumber).doubleValue }.max() ?? 0
+        let maxExpense = trendData.map { ($0.expense as NSDecimalNumber).doubleValue }.max() ?? 0
+        let bound = max(maxIncome, maxExpense)
+        // 避免底部/顶部贴边，加 10% 余量；空数据兴逻辑交给上层 hasAnyData 拦截。
+        let padded = max(bound * 1.1, 1)
+        return -padded ... padded
     }
 
     var body: some View {
@@ -90,32 +104,34 @@ struct StatsTrendView: View {
                     .foregroundStyle(Color.inkPrimary)
                 Spacer()
                 HStack(spacing: NotionTheme.space4) {
-                    legendDot(color: NotionColor.green.text(scheme), label: "收入")
-                    legendDot(color: NotionColor.red.text(scheme), label: "支出")
+                    legendDot(color: DirectionColor.amountForeground(kind: .income), label: "收入")
+                    legendDot(color: DirectionColor.amountForeground(kind: .expense), label: "支出")
                 }
             }
             .padding(.leading, 4)
 
             Chart {
                 ForEach(trendData) { d in
-                    LineMark(x: .value("日期", d.date),
-                             y: .value("收入", (d.income as NSDecimalNumber).doubleValue))
-                    .foregroundStyle(NotionColor.green.text(scheme))
-                    .interpolationMethod(.catmullRom)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
-
-                    LineMark(x: .value("日期", d.date),
-                             y: .value("支出", (d.expense as NSDecimalNumber).doubleValue))
-                    .foregroundStyle(NotionColor.red.text(scheme))
-                    .interpolationMethod(.catmullRom)
-                    .lineStyle(StrokeStyle(lineWidth: 2))
-
                     AreaMark(x: .value("日期", d.date),
-                             y: .value("支出", (d.expense as NSDecimalNumber).doubleValue))
+                             y: .value("金额", (d.income as NSDecimalNumber).doubleValue),
+                             series: .value("类型", "收入"),
+                            stacking: .unstacked)
                     .foregroundStyle(
                         LinearGradient(colors: [
-                            NotionColor.red.text(scheme).opacity(0.18),
-                            NotionColor.red.text(scheme).opacity(0.0)
+                            DirectionColor.amountForeground(kind: .income).opacity(0.70),
+                            DirectionColor.amountForeground(kind: .income).opacity(0.25)
+                        ], startPoint: .top, endPoint: .bottom)
+                    )
+                    .interpolationMethod(.catmullRom)
+
+                    AreaMark(x: .value("日期", d.date),
+                             y: .value("金额", -(d.expense as NSDecimalNumber).doubleValue),
+                             series: .value("类型", "支出"),
+                             stacking: .unstacked)
+                    .foregroundStyle(
+                        LinearGradient(colors: [
+                            DirectionColor.amountForeground(kind: .expense).opacity(0.70),
+                            DirectionColor.amountForeground(kind: .expense).opacity(0.25)
                         ], startPoint: .top, endPoint: .bottom)
                     )
                     .interpolationMethod(.catmullRom)
@@ -134,13 +150,15 @@ struct StatsTrendView: View {
                     AxisGridLine().foregroundStyle(Color.divider)
                     AxisValueLabel {
                         if let v = value.as(Double.self) {
-                            Text("\(Int(v))")
+                            // 支出为负值，标签显示绝对值
+                            Text("\(Int(abs(v)))")
                                 .font(.custom("PingFangSC-Regular", size: 9))
                                 .foregroundStyle(Color.inkTertiary)
                         }
                     }
                 }
             }
+            .chartYScale(domain: yAxisDomain)
             .frame(height: 220)
             .padding(NotionTheme.space5)
             .background(
@@ -230,9 +248,9 @@ struct StatsTrendView: View {
         let totalExpense = data.map(\.expense).reduce(Decimal(0), +)
         let avg = (totalExpense as NSDecimalNumber).doubleValue / Double(data.count)
         return .init(
-            peak: "\(f.string(from: peakPoint.date)) · ¥\(StatsFormat.intGrouped(peakPoint.expense))",
+            peak: "\(f.string(from: peakPoint.date)) · ¥\(StatsFormat.decimalGrouped(peakPoint.expense))",
             valley: peakPoint.expense > 0
-                ? "\(f.string(from: valleyPoint.date)) · ¥\(StatsFormat.intGrouped(valleyPoint.expense))"
+                ? "\(f.string(from: valleyPoint.date)) · ¥\(StatsFormat.decimalGrouped(valleyPoint.expense))"
                 : "暂无支出记录",
             avg: String(format: "¥%.2f（共 %d 天）", avg, data.count)
         )

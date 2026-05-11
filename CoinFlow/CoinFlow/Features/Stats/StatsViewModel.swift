@@ -124,8 +124,10 @@ final class StatsViewModel: ObservableObject {
     private let ledgerId: String
     private var observer: NSObjectProtocol?
 
-    init(ledgerId: String = DefaultSeeder.defaultLedgerId) {
+    init(ledgerId: String = DefaultSeeder.defaultLedgerId,
+         month: YearMonth = .current) {
         self.ledgerId = ledgerId
+        self.month = month
         observer = NotificationCenter.default.addObserver(
             forName: .recordsDidChange, object: nil, queue: .main
         ) { [weak self] _ in

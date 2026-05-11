@@ -43,6 +43,8 @@ struct StatsHubView: View {
     @State private var edgeHint: String? = nil
     /// edgeHint 自动隐藏的工作项；新提示进来时取消旧的。
     @State private var edgeHintTask: DispatchWorkItem? = nil
+    /// 月份选择器弹层显隐
+    @State private var showMonthPicker: Bool = false
 
     var body: some View {
         NavigationStack(path: $navPath) {
@@ -69,7 +71,15 @@ struct StatsHubView: View {
             }
             // 词云 / 分类排行点击某个分类 → 直达该分类详情页
             .navigationDestination(for: CategoryDetailTarget.self) { target in
-                StatsCategoryDetailView(preferredCategoryId: target.categoryId)
+                StatsCategoryDetailView(preferredCategoryId: target.categoryId,
+                                        month: vm.month)
+            }
+            .sheet(isPresented: $showMonthPicker) {
+                StatsMonthPickerSheet(selected: vm.month) { picked in
+                    vm.month = picked
+                }
+                .presentationDetents([.height(440)])
+                .presentationDragIndicator(.visible)
             }
         }
     }
@@ -120,7 +130,7 @@ struct StatsHubView: View {
         Haptics.soft()
     }
 
-    // MARK: - 9 卡片定义（中央默认 = 本月汇总）
+    // MARK: - 10 卡片定义（中央默认 = 本月汇总）
 
     private struct HubCard: Identifiable, Equatable {
         let id: StatsAnalysisDestination
@@ -131,11 +141,12 @@ struct StatsHubView: View {
 
     private var allCards: [HubCard] {
         [
-            // 9 张子页面卡：8 个深度分析 + 1 个 LLM 账单复盘历史（M10）
+            // 10 张子页面卡：8 个深度分析 + 本月统计（中央） + 1 个 LLM 账单复盘历史（M10）
             HubCard(id: .trend,     title: "趋势曲线",   icon: "chart.line.uptrend.xyaxis",   tone: .blue),
             HubCard(id: .sankey,    title: "资金流向",   icon: "arrow.left.arrow.right",      tone: .orange),
             HubCard(id: .wordcloud, title: "分类词云",   icon: "text.bubble.fill",            tone: .pink),
             HubCard(id: .budget,    title: "本月预算",   icon: "target",                      tone: .red),
+            HubCard(id: .main,      title: "本月统计",   icon: "square.grid.2x2.fill",        tone: .green),
             HubCard(id: .aa,        title: "AA 账本",    icon: "person.2.fill",               tone: .purple),
             HubCard(id: .category,  title: "分类详情",   icon: "fork.knife",                  tone: .orange),
             HubCard(id: .year,      title: "年度回顾",   icon: "calendar",                    tone: .brown),
@@ -154,9 +165,25 @@ struct StatsHubView: View {
                 Text("统计")
                     .font(.custom("PingFangSC-Semibold", size: 17))
                     .foregroundStyle(Color.inkPrimary)
-                Text("\(totalCardCount) 张报告 · \(StatsFormat.ymSubtitle(vm.month))")
-                    .font(.custom("PingFangSC-Regular", size: 11))
-                    .foregroundStyle(Color.inkTertiary)
+                // 副标题改为可点按胶囊：点击弹出月份选择器
+                Button {
+                    Haptics.soft()
+                    showMonthPicker = true
+                } label: {
+                    HStack(spacing: 3) {
+                        Text("\(totalCardCount) 张报告 · \(StatsFormat.ymSubtitle(vm.month))")
+                            .font(.custom("PingFangSC-Regular", size: 11))
+                            .foregroundStyle(Color.inkTertiary)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color.inkTertiary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.pressableSoft)
+                .accessibilityLabel("选择月份，当前 \(StatsFormat.ymSubtitle(vm.month))")
             }
         }
         .padding(.horizontal, NotionTheme.space4)
@@ -180,7 +207,7 @@ struct StatsHubView: View {
             // 用 attributed string 拼接 → minimumScaleFactor 才能让 ¥+数字整组等比例缩小
             let digitSize: CGFloat = 36
             let symbolSize = digitSize * AmountSymbolStyle.symbolScale
-            let amountStr = StatsFormat.intGrouped(vm.monthlyNet < 0 ? -vm.monthlyNet : vm.monthlyNet)
+            let amountStr = StatsFormat.decimalGrouped(vm.monthlyNet < 0 ? -vm.monthlyNet : vm.monthlyNet)
             let heroAttr: AttributedString = {
                 var a = AttributedString("¥")
                 a.font = .system(size: symbolSize, weight: .bold, design: .rounded)
@@ -206,11 +233,11 @@ struct StatsHubView: View {
             // 三栏 KPI — 居中等分；数字 17pt，竖线分隔
             HStack(spacing: 0) {
                 miniKPI("收入",
-                        "¥" + StatsFormat.intGrouped(vm.monthlyIncome),
+                        "¥" + StatsFormat.decimalGrouped(vm.monthlyIncome),
                         DirectionColor.amountForeground(kind: .income))
                 kpiDivider
                 miniKPI("支出",
-                        "¥" + StatsFormat.intGrouped(vm.monthlyExpense),
+                        "¥" + StatsFormat.decimalGrouped(vm.monthlyExpense),
                         DirectionColor.amountForeground(kind: .expense))
                 kpiDivider
                 miniKPI("笔数",
@@ -591,7 +618,7 @@ struct StatsHubView: View {
             )
         case .sankey:
             return CardPreview(
-                heroValue: "¥\(StatsFormat.compactK(vm.monthlyIncome)) → \(StatsFormat.compactK(vm.monthlyExpense))",
+                heroValue: "¥\(StatsFormat.compactK(vm.monthlyIncome)) → ¥\(StatsFormat.compactK(vm.monthlyExpense))",
                 insight: vm.expenseCategorySlices.first.map { "\($0.name)占 \(Int($0.percentage * 100))%" }
                     ?? "查看资金流向"
             )
@@ -609,6 +636,26 @@ struct StatsHubView: View {
                 heroValue: String(format: "%.0f%%", pct),
                 insight: cur > target ? "本月已超出估算预算" : "预算执行良好"
             )
+        case .main:
+            // 本月统计：净增（收入 - 支出）+ 收支笔数
+            let net = vm.monthlyIncome - vm.monthlyExpense
+            let sign = net >= 0 ? "+" : "-"
+            let absNet = net >= 0 ? net : -net
+            let cal = Calendar.current
+            let now = Date()
+            let monthRecords = vm.allRecords.filter {
+                cal.isDate($0.occurredAt, equalTo: now, toGranularity: .month)
+            }
+            let incomeCount = monthRecords.filter {
+                (vm.categoriesById[$0.categoryId]?.kind ?? .expense) == .income
+            }.count
+            let expenseCount = monthRecords.filter {
+                (vm.categoriesById[$0.categoryId]?.kind ?? .expense) == .expense
+            }.count
+            return CardPreview(
+                heroValue: sign + "¥" + StatsFormat.compactK(absNet),
+                insight: "收 \(incomeCount) 笔 · 支 \(expenseCount) 笔"
+            )
         case .aa:
             let aaCount = vm.allRecords.filter { ($0.participants?.count ?? 0) > 0 }.count
             return CardPreview(
@@ -618,7 +665,7 @@ struct StatsHubView: View {
         case .category:
             let top = vm.expenseCategorySlices.first
             return CardPreview(
-                heroValue: top.map { "¥" + StatsFormat.intGrouped($0.amount) } ?? "—",
+                heroValue: top.map { "¥" + StatsFormat.decimalGrouped($0.amount) } ?? "—",
                 insight: top.map { "\($0.name) · \($0.count) 笔" } ?? "暂无支出"
             )
         case .year:
@@ -631,7 +678,7 @@ struct StatsHubView: View {
             let peak = vm.hourlyDistribution.max(by: { $0.amount < $1.amount })
             return CardPreview(
                 heroValue: peak.map { String(format: "%02d:00", $0.hour) } ?? "—",
-                insight: peak.map { "高峰时段 · ¥" + StatsFormat.intGrouped($0.amount) } ?? "暂无数据"
+                insight: peak.map { "高峰时段 · ¥" + StatsFormat.decimalGrouped($0.amount) } ?? "暂无数据"
             )
         case .summary:
             // 同步轻查询：取 listAll 第一条作为最新一次复盘的预览
@@ -688,14 +735,15 @@ struct StatsHubView: View {
     @ViewBuilder
     private func destinationView(_ dest: StatsAnalysisDestination) -> some View {
         switch dest {
-        case .trend:     StatsTrendView()
-        case .sankey:    StatsSankeyView()
-        case .wordcloud: StatsWordCloudView()
-        case .budget:    StatsBudgetView()
-        case .aa:        StatsAABalanceView()
-        case .category:  StatsCategoryDetailView()
-        case .year:      StatsYearView()
-        case .hourly:    StatsHourlyView()
+        case .trend:     StatsTrendView(month: vm.month)
+        case .sankey:    StatsSankeyView(month: vm.month)
+        case .wordcloud: StatsWordCloudView(month: vm.month)
+        case .budget:    StatsBudgetView(month: vm.month)
+        case .main:      StatsMainView(month: vm.month)
+        case .aa:        StatsAABalanceView(month: vm.month)
+        case .category:  StatsCategoryDetailView(month: vm.month)
+        case .year:      StatsYearView(month: vm.month)
+        case .hourly:    StatsHourlyView(month: vm.month)
         case .summary:   BillsSummaryListView(showsTestSection: false)
         }
     }
@@ -843,6 +891,144 @@ final class PassthroughView: UIView {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         // 本 view 接收所有手势，但内部没有子视图需要单独响应
         return super.hitTest(point, with: event)
+    }
+}
+
+// MARK: - 月份选择器 Sheet
+//
+// 设计：年份滚轮（横向胶囊）+ 12 月份网格。
+//   - 顶部"取消 / 选择月份 / 本月"
+//   - 中部年份行：可左右滑动浏览，禁用未来年
+//   - 下方 4×3 月份网格：高亮选中、禁用未来月（同年 + 未来月份不可选）
+//   - 选中即关闭并回调
+//
+// 不引入第三方组件，只用 SwiftUI 原语，保持与项目其余 sheet 视觉一致。
+struct StatsMonthPickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let initial: YearMonth
+    let onPick: (YearMonth) -> Void
+
+    @State private var year: Int
+    @State private var month: Int
+
+    /// 上限：今天所在年月（不允许选未来）
+    private let nowYM: YearMonth = .current
+
+    init(selected: YearMonth, onPick: @escaping (YearMonth) -> Void) {
+        self.initial = selected
+        self.onPick = onPick
+        _year = State(initialValue: selected.year)
+        _month = State(initialValue: selected.month)
+    }
+
+    /// 可选年份范围：从 5 年前到今年
+    private var yearOptions: [Int] {
+        let cur = nowYM.year
+        return Array((cur - 5)...cur)
+    }
+
+    private func isFutureMonth(year: Int, month: Int) -> Bool {
+        if year > nowYM.year { return true }
+        if year == nowYM.year && month > nowYM.month { return true }
+        return false
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button("取消") { dismiss() }
+                    .font(.custom("PingFangSC-Regular", size: 15))
+                    .foregroundStyle(Color.inkSecondary)
+                Spacer()
+                Text("选择月份")
+                    .font(.custom("PingFangSC-Semibold", size: 16))
+                    .foregroundStyle(Color.inkPrimary)
+                Spacer()
+                Button("本月") {
+                    year = nowYM.year
+                    month = nowYM.month
+                    onPick(nowYM)
+                    dismiss()
+                }
+                .font(.custom("PingFangSC-Regular", size: 15))
+                .foregroundStyle(Color.accentBlue)
+            }
+            .padding(.horizontal, NotionTheme.space5)
+            .padding(.vertical, NotionTheme.space6)
+
+            Rectangle()
+                .fill(Color.divider)
+                .frame(height: NotionTheme.borderWidth)
+
+            // Year row
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(yearOptions, id: \.self) { y in
+                        let selected = (y == year)
+                        Button {
+                            year = y
+                            // 切换到没有未来限制的最近月份
+                            if isFutureMonth(year: y, month: month) {
+                                month = (y == nowYM.year) ? nowYM.month : 12
+                            }
+                        } label: {
+                            Text("\(y) 年")
+                                .font(.custom("PingFangSC-Regular", size: 14))
+                                .foregroundStyle(selected ? Color.white : Color.inkPrimary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(
+                                    Capsule(style: .continuous)
+                                        .fill(selected ? Color.accentBlue : Color.hoverBg)
+                                )
+                        }
+                        .buttonStyle(.pressableSoft)
+                    }
+                }
+                .padding(.horizontal, NotionTheme.space5)
+                .padding(.vertical, NotionTheme.space4)
+            }
+
+            // Month grid 4×3
+            let cols = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
+            LazyVGrid(columns: cols, spacing: 12) {
+                ForEach(1...12, id: \.self) { m in
+                    let disabled = isFutureMonth(year: year, month: m)
+                    let selected = (m == month && year == year)
+                    Button {
+                        guard !disabled else { return }
+                        month = m
+                        let picked = YearMonth(year: year, month: m)
+                        onPick(picked)
+                        dismiss()
+                    } label: {
+                        Text("\(m) 月")
+                            .font(.custom("PingFangSC-Regular", size: 15))
+                            .foregroundStyle(
+                                disabled ? Color.inkTertiary
+                                    : (selected ? Color.white : Color.inkPrimary)
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(
+                                        disabled ? Color.hoverBg.opacity(0.4)
+                                            : (selected ? Color.accentBlue : Color.hoverBg)
+                                    )
+                            )
+                    }
+                    .buttonStyle(.pressableSoft)
+                    .disabled(disabled)
+                }
+            }
+            .padding(.horizontal, NotionTheme.space5)
+            .padding(.top, NotionTheme.space2)
+
+            Spacer(minLength: 0)
+        }
+        .background(Color.appCanvas)
     }
 }
 

@@ -61,13 +61,6 @@ struct RecordsListView: View {
                     }
                     content
                 }
-
-                // M7 [01-2]：月份 picker popover 叠层
-                if showMonthPicker {
-                    monthPickerOverlay
-                        .transition(.opacity.animation(Motion.smooth))
-                        .zIndex(6)
-                }
             }
             // 真机性能修复：删除底层全屏 .blur(8)（与 sheet 的 .ultraThinMaterial 双重模糊导致掉帧）
             .navigationBarHidden(true)
@@ -113,6 +106,14 @@ struct RecordsListView: View {
                           selection: $captureCoord.pickerItem,
                           matching: .images,
                           photoLibrary: .shared())
+            // 月份选择器：复用统计页 StatsMonthPickerSheet（取消 / 选择月份 / 本月 + 年份滚轮 + 4×3 月份网格）
+            .sheet(isPresented: $showMonthPicker) {
+                StatsMonthPickerSheet(selected: vm.selectedYearMonth ?? .current) { picked in
+                    vm.selectedYearMonth = picked
+                }
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+            }
             .onAppear {
                 consumePendingAction()
                 loadLayoutFromSettings()
@@ -187,136 +188,121 @@ struct RecordsListView: View {
 
     // MARK: - Nav Bar
     //
-    // 设计基线（design/screens/01-records-list/main-light.png）：
-    // - 左：日历 icon + chevron.down（月份切换器）
-    // - 中：「{month} 月」h2 + 「月收支记录」micro 副标题
-    // - 右：放大镜（搜索 toggle）+ 加号
-    // 麦克风/截图/分类管理/设置入口：原 4 颗按钮删除，统一收编到加号 Menu（长按弹出）
+    // 重构：与统计页（StatsHubView）月份选择体验对齐
+    // - 左：加号 Menu（点击新建，长按出 Menu：手动/语音/截图/分类管理/设置）
+    // - 中：双行标题「{month} 月」+ 「月收支记录」点击触发底部 sheet（StatsMonthPickerSheet）
+    // - 右：搜索 toggle
     private var navBar: some View {
         ZStack {
-            // 中央双层标题：M7-Fix2 显示选中的月份数字
-            VStack(spacing: 2) {
-                Text(navTitleText)
-                    .font(NotionFont.h2())
-                    .foregroundStyle(Color.inkPrimary)
-                Text("月收支记录")
-                    .font(NotionFont.micro())
-                    .foregroundStyle(Color.inkTertiary)
-            }
-            .frame(maxWidth: .infinity, alignment: .center)
-
-            // 左：月份切换器
-            HStack {
-                Button {
-                    Haptics.tap()
-                    withAnimation(Motion.smooth) {
-                        showMonthPicker.toggle()
-                        if showMonthPicker { showSearchBar = false }
-                    }
-                } label: {
-                    HStack(spacing: 2) {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 16, weight: .regular))
+            // 中央双层标题：点击触发月份选择 sheet
+            Button {
+                Haptics.tap()
+                showSearchBar = false
+                showMonthPicker = true
+            } label: {
+                VStack(spacing: 2) {
+                    // 主标题 + 下拉箭头：暗示可点击切换月份
+                    HStack(spacing: 6) {
+                        Text(navTitleText)
+                            .font(NotionFont.h2())
                             .foregroundStyle(Color.inkPrimary)
-                        Image(systemName: showMonthPicker ? "chevron.up" : "chevron.down")
+                        Image(systemName: "chevron.down")
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(Color.inkPrimary)
-                            // chevron 旋转过渡
-                            .animation(Motion.snap, value: showMonthPicker)
+                            .foregroundStyle(Color.inkTertiary)
                     }
-                    .frame(height: 36)
-                    .padding(.horizontal, NotionTheme.space4)
+                    Text("点击切换月份")
+                        .font(NotionFont.micro())
+                        .foregroundStyle(Color.inkTertiary)
+                }
+                .padding(.horizontal, NotionTheme.space4)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.pressableSoft)
+            .accessibilityLabel("切换月份，当前 \(navTitleText)")
+            .accessibilityHint("双击选择其他月份")
+
+            // 左：加号 Menu（原右上角）
+            //
+            // Fix: 扁平化层级——直接挂在 ZStack 上，避免 HStack 嵌套与 Menu(primaryAction:)
+            // 的内部 _UIReparentingView 在 UIHostingController.view 上引发布局警告。
+            Menu {
+                Button {
+                    showNewRecord = true
+                } label: {
+                    Label("手动新建", systemImage: "plus")
+                }
+                Button {
+                    showVoice = true
+                } label: {
+                    Label("语音记账", systemImage: "mic.fill")
+                }
+                Button {
+                    // 截图识别 → PhotosPicker；通过 captureCoord.pickerItem 触发
+                    // 这里不能直接弹 PhotosPicker（需要 SwiftUI 修饰符），通过设置 flag 让 .photosPicker 拉起
+                    showCapturePicker = true
+                } label: {
+                    Label("识别截图", systemImage: "doc.text.viewfinder")
+                }
+                Divider()
+                Button {
+                    showCategoryManager = true
+                } label: {
+                    Label("分类管理", systemImage: "folder")
+                }
+                Button {
+                    showSettings = true
+                } label: {
+                    Label("设置", systemImage: "gearshape")
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(Color.inkPrimary)
+                    .frame(width: 36, height: 36)
                     .background(
                         RoundedRectangle(cornerRadius: NotionTheme.radiusMD,
                                          style: .continuous)
-                            .fill(showMonthPicker ? Color.hoverBgStrong : Color.hoverBg)
-                            .animation(Motion.snap, value: showMonthPicker)
+                            .fill(Color.hoverBg)
                     )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.pressableIcon)
-                .accessibilityLabel("切换月份")
-                Spacer()
+            } primaryAction: {
+                showNewRecord = true
             }
+            .menuOrder(.fixed)
+            .accessibilityLabel("新建（长按显示更多）")
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, NotionTheme.space5)
 
-            // 右：搜索（inline toggle） + 加号 Menu
-            HStack(spacing: NotionTheme.space3) {
-                Spacer()
-                Button {
-                    Haptics.tap()
-                    withAnimation(Motion.smooth) {
-                        showSearchBar.toggle()
-                        if showSearchBar {
-                            showMonthPicker = false
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                searchFocused = true
-                            }
-                        } else {
-                            searchFocused = false
-                            vm.searchQuery = ""
+            // 右：搜索 toggle
+            Button {
+                Haptics.tap()
+                withAnimation(Motion.smooth) {
+                    showSearchBar.toggle()
+                    if showSearchBar {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            searchFocused = true
                         }
+                    } else {
+                        searchFocused = false
+                        vm.searchQuery = ""
                     }
-                } label: {
-                    Image(systemName: showSearchBar ? "xmark" : "magnifyingglass")
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(Color.inkPrimary)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: NotionTheme.radiusMD,
-                                             style: .continuous)
-                                .fill(showSearchBar ? Color.hoverBgStrong : Color.hoverBg)
-                                .animation(Motion.snap, value: showSearchBar)
-                        )
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.pressableIcon)
-                .accessibilityLabel(showSearchBar ? "关闭搜索" : "搜索流水")
-
-                Menu {
-                    Button {
-                        showNewRecord = true
-                    } label: {
-                        Label("手动新建", systemImage: "plus")
-                    }
-                    Button {
-                        showVoice = true
-                    } label: {
-                        Label("语音记账", systemImage: "mic.fill")
-                    }
-                    Button {
-                        // 截图识别 → PhotosPicker；通过 captureCoord.pickerItem 触发
-                        // 这里不能直接弹 PhotosPicker（需要 SwiftUI 修饰符），通过设置 flag 让 .photosPicker 拉起
-                        showCapturePicker = true
-                    } label: {
-                        Label("识别截图", systemImage: "doc.text.viewfinder")
-                    }
-                    Divider()
-                    Button {
-                        showCategoryManager = true
-                    } label: {
-                        Label("分类管理", systemImage: "folder")
-                    }
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Label("设置", systemImage: "gearshape")
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(Color.inkPrimary)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            RoundedRectangle(cornerRadius: NotionTheme.radiusMD,
-                                             style: .continuous)
-                                .fill(Color.hoverBg)
-                        )
-                } primaryAction: {
-                    showNewRecord = true
-                }
-                .accessibilityLabel("新建（长按显示更多）")
+            } label: {
+                Image(systemName: showSearchBar ? "xmark" : "magnifyingglass")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(Color.inkPrimary)
+                    .frame(width: 36, height: 36)
+                    .background(
+                        RoundedRectangle(cornerRadius: NotionTheme.radiusMD,
+                                         style: .continuous)
+                            .fill(showSearchBar ? Color.hoverBgStrong : Color.hoverBg)
+                            .animation(Motion.snap, value: showSearchBar)
+                    )
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.pressableIcon)
+            .accessibilityLabel(showSearchBar ? "关闭搜索" : "搜索流水")
+            .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, NotionTheme.space5)
         }
         .frame(height: NotionTheme.topbarHeight)
@@ -495,84 +481,6 @@ struct RecordsListView: View {
         .padding(.horizontal, NotionTheme.space5)
         .padding(.vertical, NotionTheme.space3)
         .background(Color.appCanvas)
-    }
-
-    // MARK: - M7 [01-2] Month picker popover
-
-    private var monthPickerOverlay: some View {
-        ZStack(alignment: .top) {
-            Color.black.opacity(0.30)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(Motion.smooth) { showMonthPicker = false }
-                }
-            VStack(spacing: 0) {
-                // 留 navBar 高度
-                Color.clear.frame(height: NotionTheme.topbarHeight + 8)
-                monthGridCard
-                    .padding(.horizontal, NotionTheme.space5)
-                Spacer()
-            }
-        }
-    }
-
-    private var monthGridCard: some View {
-        VStack(alignment: .leading, spacing: NotionTheme.space4) {
-            HStack {
-                Text("选择月份")
-                    .font(NotionFont.bodyBold())
-                    .foregroundStyle(Color.inkPrimary)
-                Spacer()
-                Text(String(Calendar.current.component(.year, from: Date())))
-                    .font(NotionFont.small())
-                    .foregroundStyle(Color.inkTertiary)
-            }
-            .padding(.horizontal, NotionTheme.space5)
-            .padding(.top, NotionTheme.space5)
-
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: NotionTheme.space3), count: 4),
-                      spacing: NotionTheme.space3) {
-                ForEach(1...12, id: \.self) { m in
-                    monthCell(m)
-                }
-            }
-            .padding(.horizontal, NotionTheme.space5)
-            .padding(.bottom, NotionTheme.space5)
-        }
-        .cardSurface(cornerRadius: 14,
-                     notionFill: Color.surfaceOverlay,
-                     notionStroke: Color.border)
-    }
-
-    @ViewBuilder
-    private func monthCell(_ month: Int) -> some View {
-        // M7-Fix2：高亮已选月；点击真过滤到 vm.selectedYearMonth
-        let selectedMonth = vm.selectedYearMonth?.month
-        let year = vm.selectedYearMonth?.year ?? Calendar.current.component(.year, from: Date())
-        let isSelected = selectedMonth == month
-        Button {
-            Haptics.select()
-            vm.selectedYearMonth = YearMonth(year: year, month: month)
-            withAnimation(Motion.smooth) { showMonthPicker = false }
-        } label: {
-            Text("\(month) 月")
-                .font(NotionFont.body())
-                .foregroundStyle(isSelected ? Color.inkPrimary : Color.inkSecondary)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: NotionTheme.radiusMD)
-                        .fill(isSelected ? Color.accentBlueBG : Color.hoverBg.opacity(0.5))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: NotionTheme.radiusMD)
-                        .stroke(isSelected ? Color.accentBlue : Color.clear,
-                                lineWidth: 1)
-                )
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.pressable(haptic: false))
-        .accessibilityLabel("\(month) 月\(isSelected ? "，已选中" : "")")
     }
 
     /// 段头右侧"¥xxx 当日合计"文案。按用户规范去掉正负号，方向由 daySummaryColor 表达。

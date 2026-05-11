@@ -10,9 +10,13 @@ import SwiftUI
 import Charts
 
 struct StatsHourlyView: View {
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
     @State private var showMonthPicker = false
+
+    init(month: YearMonth = .current) {
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
+    }
 
     private var maxHourly: Double {
         vm.hourlyDistribution.map { ($0.amount as NSDecimalNumber).doubleValue }.max() ?? 1
@@ -68,7 +72,7 @@ struct StatsHourlyView: View {
                 Text(String(format: "%02d:00 - %02d:00", peakHour, (peakHour + 1) % 24))
                     .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(DirectionColor.amountForeground(kind: .expense))
-                Text("¥" + StatsFormat.intGrouped(vm.hourlyDistribution[peakHour].amount))
+                Text("¥" + StatsFormat.decimalGrouped(vm.hourlyDistribution[peakHour].amount))
                     .font(NotionFont.small())
                     .foregroundStyle(Color.inkSecondary)
             }
@@ -196,7 +200,7 @@ struct StatsHourlyView: View {
                     .foregroundStyle(Color.inkSecondary)
             }
             Spacer()
-            Text("¥" + StatsFormat.intGrouped(total))
+            Text("¥" + StatsFormat.decimalGrouped(total))
                 .font(NotionFont.amount(size: 15))
                 .foregroundStyle(Color.inkPrimary)
         }

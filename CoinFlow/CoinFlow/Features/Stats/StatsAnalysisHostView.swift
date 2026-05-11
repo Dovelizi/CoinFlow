@@ -1,22 +1,24 @@
 //  StatsAnalysisHostView.swift
-//  CoinFlow · V2 Stats · 8 分析页面路由
+//  CoinFlow · V2 Stats · 10 分析页面路由
 //
-//  设计基线：design/screens/05-stats 的 8 张图（trend / sankey / wordcloud / budget /
-//  aa-balance / category-detail / year-view / hourly），每张为独立全屏页面。
+//  设计基线：design/screens/05-stats 的 10 张图（trend / sankey / wordcloud / budget /
+//  main / aa-balance / category-detail / year-view / hourly + summary M10），
+//  每张为独立全屏页面。
 //
-//  入口：StatsHubView 中 8 张 hubCard 通过 `NavigationLink(value: .trend)` 等触达。
+//  入口：StatsHubView 中 10 张 hubCard 通过 `NavigationLink(value: .trend)` 等触达。
 //  这里不持有 ViewModel；每个子视图独立 init StatsViewModel（VM 内部对 .recordsDidChange
 //  做监听 + 自动重算，多实例间数据保持同步且各自闭环管理生命周期）。
 
 import SwiftUI
 import UIKit
 
-/// Stats Hub 9 个深度分析子页面 ID。
+/// Stats Hub 10 个深度分析子页面 ID。
 enum StatsAnalysisDestination: String, Hashable, CaseIterable {
     case trend       // 月度趋势曲线
     case sankey      // 收入→支出资金流
     case wordcloud   // 备注/分类词云
     case budget      // 预算环
+    case main        // 本月统计（净增 + 收支笔数 + 日历热力 + 分类构成）
     case aa          // AA 账本结算
     case category    // 分类详情下钻
     case year        // 12 月年度视图
@@ -166,7 +168,7 @@ enum StatsSnapshot {
 // MARK: - Common formatting helpers（所有子视图共用）
 
 enum StatsFormat {
-    /// 整数 + 千分位（图表轴标签 / 卡片大数字）
+    /// 整数 + 千分位（仅图表轴标签用；金额展示请用 `decimalGrouped`）
     static func intGrouped(_ d: Decimal) -> String {
         let f = NumberFormatter()
         f.numberStyle = .decimal
@@ -176,12 +178,24 @@ enum StatsFormat {
         return f.string(from: d as NSDecimalNumber) ?? "0"
     }
 
+    /// 金额展示：最多 2 位小数 + 千分位，且整数时不显示小数点（智能）
+    /// 例：123.2 → "123.2"，100 → "100"，1234.56 → "1,234.56"，1234.50 → "1,234.5"
+    static func decimalGrouped(_ d: Decimal) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = 2
+        f.usesGroupingSeparator = true
+        return f.string(from: d as NSDecimalNumber) ?? "0"
+    }
+
     /// 紧凑万/千格式（年度/AA hero 用）
+    /// 小额（<1000）走 `decimalGrouped` 保留最多 2 位小数；≥1k/1w 才压缩
     static func compactK(_ d: Decimal) -> String {
         let v = (d as NSDecimalNumber).doubleValue
         if v >= 10000 { return String(format: "%.1fw", v / 10000) }
         if v >= 1000  { return String(format: "%.1fk", v / 1000) }
-        return intGrouped(d)
+        return decimalGrouped(d)
     }
 
     /// 月份 / 子页 subtitle 通用

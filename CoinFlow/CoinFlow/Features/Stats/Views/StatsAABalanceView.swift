@@ -14,9 +14,13 @@
 import SwiftUI
 
 struct StatsAABalanceView: View {
-    @StateObject private var vm = StatsViewModel()
+    @StateObject private var vm: StatsViewModel
     @Environment(\.colorScheme) private var scheme
     @State private var showAddMember = false
+
+    init(month: YearMonth = .current) {
+        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
+    }
 
     /// 是否存在任何带 participants 的 record（AA 入口已经被使用过）。
     private var hasAARecords: Bool {
@@ -91,7 +95,7 @@ struct StatsAABalanceView: View {
                 Text("总开支")
                     .font(NotionFont.micro())
                     .foregroundStyle(Color.inkTertiary)
-                Text("¥" + StatsFormat.intGrouped(total))
+                Text("¥" + StatsFormat.decimalGrouped(total))
                     .font(.system(size: 38, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(NotionColor.purple.text(scheme))
                 Text("\(aaRecords.count) 笔 · 等待 V2 结算引擎")
