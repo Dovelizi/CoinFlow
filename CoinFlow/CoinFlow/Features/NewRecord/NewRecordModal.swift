@@ -94,12 +94,12 @@ struct NewRecordModal: View {
         // 仅对"超过 1 亿"弹彩蛋；小数位/整数位/非法字符走红字提示就够了
         guard vm.amountClampReason == .overLimit else { return }
         let text = "吹🐮🍺呢，你会有一个小目标？？？"
-        withAnimation(.easeOut(duration: 0.18)) {
+        withAnimation(Motion.exit(0.18)) {
             clampedToastText = text
         }
         clampedToastTask?.cancel()
         let task = DispatchWorkItem {
-            withAnimation(.easeIn(duration: 0.22)) {
+            withAnimation(Motion.standard(0.22)) {
                 clampedToastText = nil
             }
         }
@@ -135,9 +135,13 @@ struct NewRecordModal: View {
             // 内边距由 space5(12) → space6(16)：与系统 nav bar 16~20pt 内边距对齐，
             // 避免文字过分贴近屏幕边缘
             HStack {
-                Button("取消") { dismiss() }
-                    .font(NotionFont.body())
-                    .foregroundStyle(Color.inkPrimary)
+                Button("取消") {
+                    Haptics.tap()
+                    dismiss()
+                }
+                .font(NotionFont.body())
+                .foregroundStyle(Color.inkPrimary)
+                .buttonStyle(.pressable(haptic: false))
                 Spacer()
             }
             .padding(.horizontal, NotionTheme.space6)
@@ -148,8 +152,12 @@ struct NewRecordModal: View {
                 Button {
                     Task {
                         if let saved = await vm.save() {
+                            Haptics.success()
                             onSaved?(saved)
                             dismiss()
+                        } else {
+                            // 保存失败：error 触觉
+                            Haptics.error()
                         }
                     }
                 } label: {
@@ -162,6 +170,7 @@ struct NewRecordModal: View {
                     }
                 }
                 .disabled(!vm.canSave)
+                .buttonStyle(.pressable(haptic: false))
             }
             .padding(.horizontal, NotionTheme.space6)
         }
@@ -226,8 +235,11 @@ struct NewRecordModal: View {
         .background(
             RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
                 .stroke(vm.isAmountInError ? Color.dangerRed : Color.clear, lineWidth: 1)
+                .animation(Motion.snap, value: vm.isAmountInError)
         )
-        .animation(.easeInOut(duration: 0.18), value: vm.amountClampedAt)
+        // 金额超限/非法字符时整张卡片抖动
+        .shake(trigger: vm.amountClampedAt)
+        .animation(Motion.standard(0.18), value: vm.amountClampedAt)
     }
 
     // MARK: - Direction segmented
@@ -247,7 +259,10 @@ struct NewRecordModal: View {
     private func directionButton(_ kind: CategoryKind, label: String) -> some View {
         let active = vm.direction == kind
         return Button {
-            vm.setDirection(kind)
+            Haptics.select()
+            withAnimation(Motion.snap) {
+                vm.setDirection(kind)
+            }
         } label: {
             Text(label)
                 .font(NotionFont.bodyBold())
@@ -257,9 +272,10 @@ struct NewRecordModal: View {
                 .background(
                     RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
                         .fill(directionActiveFill(active: active))
+                        .animation(Motion.snap, value: active)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable(haptic: false))
     }
 
     /// 「支出/收入」active 段填色：
@@ -286,7 +302,7 @@ struct NewRecordModal: View {
                     showChevron: true
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableRow)
 
             innerDivider
 
@@ -299,7 +315,7 @@ struct NewRecordModal: View {
                     showChevron: true
                 )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableRow)
 
             innerDivider
 

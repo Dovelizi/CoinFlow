@@ -98,7 +98,7 @@ struct SyncStatusView: View {
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("返回")
                 Spacer()
                 Button { reload() } label: {
@@ -108,7 +108,7 @@ struct SyncStatusView: View {
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("刷新")
             }
             .padding(.horizontal, NotionTheme.space4)
@@ -250,7 +250,7 @@ struct SyncStatusView: View {
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("重试同步")
             }
         }
@@ -421,7 +421,7 @@ struct SyncStatusView: View {
                 .padding(NotionTheme.space5)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableSoft)
             .disabled(!pullEnabled)
             .background(
                 RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
@@ -498,7 +498,7 @@ struct SyncStatusView: View {
                             .fill(canAction ? Color.inkPrimary : Color.hoverBgStrong)
                     )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableSoft)
             .disabled(!canAction || isActioning)
             .padding(.horizontal, NotionTheme.space5)
             .padding(.top, NotionTheme.space4)

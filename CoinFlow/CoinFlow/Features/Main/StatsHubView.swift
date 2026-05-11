@@ -104,21 +104,20 @@ struct StatsHubView: View {
     private func showEdgeHint(_ text: String) {
         // 同样文本仍在显示，仅延长一次显示时间（重置定时器）
         if edgeHint != text {
-            withAnimation(.easeOut(duration: 0.18)) { edgeHint = text }
+            withAnimation(Motion.exit(0.18)) { edgeHint = text }
         }
         edgeHintTask?.cancel()
         let task = DispatchWorkItem { [text] in
             // 仅当当前显示的还是这条文本时才隐藏（避免覆盖更新的 toast）
             if edgeHint == text {
-                withAnimation(.easeIn(duration: 0.22)) { edgeHint = nil }
+                withAnimation(Motion.standard(0.22)) { edgeHint = nil }
             }
         }
         edgeHintTask = task
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.4, execute: task)
 
-        // 边界轻反馈（一次性，不与 spring 动画堆叠）
-        let gen = UIImpactFeedbackGenerator(style: .soft)
-        gen.impactOccurred()
+        // 边界反馈（用户偏好：禁用震动；保留 hint 视觉提示）
+        Haptics.soft()
     }
 
     // MARK: - 9 卡片定义（中央默认 = 本月汇总）
@@ -413,7 +412,7 @@ struct StatsHubView: View {
         // 切换动画：用 easeOut 替代 spring —— 无回弹，纯粹的"减速到位"
         // A 渐隐缩小 / B 渐显放大 靠 slotCardView 的形态插值完成，timing curve 决定节奏
         // duration 0.42s：与之前 spring response 手感匹配，舒展但不拖沓
-        withAnimation(.easeOut(duration: 0.42)) {
+        withAnimation(Motion.smooth) {
             if delta != 0 {
                 currentIdx = max(0, min(totalCardCount - 1, currentIdx + delta))
             }
@@ -499,7 +498,7 @@ struct StatsHubView: View {
                 showEdgeHint(delta > 0 ? "已是最后一张" : "已是第一张")
                 return
             }
-            withAnimation(.easeOut(duration: 0.42)) {
+            withAnimation(Motion.smooth) {
                 currentIdx = target
             }
         }

@@ -179,7 +179,7 @@ struct SettingsView: View {
                             .foregroundStyle(themeStore.isEnabled ? Color.white : Color.inkPrimary)
                             .frame(width: 36, height: 36)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressableSoft)
                     .accessibilityLabel("返回")
                     Spacer()
                 }
@@ -272,7 +272,7 @@ struct SettingsView: View {
                 .padding(.vertical, 14)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableSoft)
             .accessibilityLabel("主题与颜色，当前 \(appearanceSummaryText)")
         }
     }
@@ -372,7 +372,7 @@ struct SettingsView: View {
     private var recordsLayoutRow: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(Motion.snap) {
                     recordsLayoutExpanded.toggle()
                 }
             } label: {
@@ -399,7 +399,7 @@ struct SettingsView: View {
                 .padding(.vertical, 14)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableSoft)
             .accessibilityLabel("流水列表布局，当前 \(layoutLabel(recordsListLayout))，点击展开选项")
 
             if recordsLayoutExpanded {
@@ -440,7 +440,7 @@ struct SettingsView: View {
                     .fill(active ? Color.surfaceOverlay : Color.clear)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("\(layoutLabel(l)) 布局\(active ? "，已选中" : "")")
     }
 
@@ -495,7 +495,7 @@ struct SettingsView: View {
                 .padding(.bottom, 12)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableSoft)
             .accessibilityLabel("查看 Back Tap 配置教程")
         }
     }
@@ -503,7 +503,7 @@ struct SettingsView: View {
     private var voiceFieldsToggleGroup: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                withAnimation(Motion.snap) {
                     voiceFieldsExpanded.toggle()
                 }
             } label: {
@@ -531,7 +531,7 @@ struct SettingsView: View {
                 .padding(.vertical, 14)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableSoft)
             .accessibilityLabel("语音必填字段，当前 \(voiceFieldsSummary)，点击展开选项")
 
             if voiceFieldsExpanded {
@@ -762,7 +762,7 @@ struct SettingsView: View {
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityHint(accessibilityHint)
     }
 

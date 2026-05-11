@@ -47,7 +47,7 @@ struct BackTapSetupView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.inkPrimary)
                         .frame(width: 36, height: 36)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.pressableSoft)
                 Spacer()
             }
             .padding(.horizontal, NotionTheme.space5)

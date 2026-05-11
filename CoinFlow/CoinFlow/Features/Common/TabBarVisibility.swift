@@ -33,7 +33,7 @@ final class TabBarVisibility: ObservableObject {
         // delta > 0 表示手指向下拉、内容向下滚（回到顶部）→ 显示
         let shouldShow = delta > 0
         if shouldShow != isVisible {
-            withAnimation(.easeOut(duration: 0.22)) {
+            withAnimation(Motion.smooth) {
                 isVisible = shouldShow
             }
         }
@@ -41,7 +41,7 @@ final class TabBarVisibility: ObservableObject {
 
     /// 切换 tab / 显式请求时调用，立即显示
     func forceShow() {
-        withAnimation(.easeOut(duration: 0.18)) {
+        withAnimation(Motion.snap) {
             isVisible = true
         }
         lastOffset = 0

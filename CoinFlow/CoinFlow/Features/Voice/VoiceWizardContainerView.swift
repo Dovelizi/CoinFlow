@@ -96,7 +96,7 @@ struct VoiceWizardContainerView: View {
         //          需 iOS 16.4+；16.0~16.3 沿用默认不透明背景
         .modifier(BlurredSheetBackground())
         .onChange(of: vm.phase) { newPhase in
-            withAnimation(.easeInOut(duration: 0.25)) {
+            withAnimation(Motion.smooth) {
                 detent = Self.isRecording(newPhase) ? .medium : .large
             }
         }
@@ -137,7 +137,7 @@ struct VoiceWizardContainerView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.inkPrimary)
                         .frame(width: 36, height: 36)
-                }.buttonStyle(.plain)
+                }.buttonStyle(.pressableSoft)
             }
             .padding(.horizontal, NotionTheme.space5)
             .frame(height: NotionTheme.topbarHeight)
@@ -186,7 +186,7 @@ struct VoiceWizardContainerView: View {
                                 RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
                                     .fill(Color.hoverBg)
                             )
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.pressableSoft)
 
                     Button {
                         // 重置到 idle 等待用户再次按住录音
@@ -201,7 +201,7 @@ struct VoiceWizardContainerView: View {
                                 RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
                                     .fill(Color.accentBlue)
                             )
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(.pressableSoft)
                 }
                 .padding(.horizontal, NotionTheme.space6)
             } else {
@@ -218,7 +218,7 @@ struct VoiceWizardContainerView: View {
                                 .fill(Color.accentBlue)
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .padding(.horizontal, NotionTheme.space6)
             }
         }

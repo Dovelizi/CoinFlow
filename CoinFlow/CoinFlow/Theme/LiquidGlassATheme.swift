@@ -93,7 +93,7 @@ final class LGAThemeStore: ObservableObject {
     func setKind(_ newValue: AppTheme, animated: Bool = true) {
         guard kind != newValue else { return }
         if animated {
-            withAnimation(.easeInOut(duration: 0.35)) {
+            withAnimation(Motion.glass) {
                 kind = newValue
             }
         } else {

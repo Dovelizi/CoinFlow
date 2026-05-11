@@ -152,11 +152,12 @@ final class NewRecordViewModel: ObservableObject {
     }
 
     /// UIKit 层硬拦截后的反馈入口（公开供 AmountTextFieldUIKit 调用）。
-    /// 记录原因 + 时间戳 + 轻震动，View 层据此显示红字 + 彩蛋 toast。
+    /// 记录原因 + 时间戳，View 层据此显示红字 + 彩蛋 toast。
+    /// 用户偏好：点击交互不需要震动。
     func handleClamp(_ reason: AmountClampReason) {
         amountClampReason = reason
         amountClampedAt = Date()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptics.tap()
     }
 
     // MARK: - Save

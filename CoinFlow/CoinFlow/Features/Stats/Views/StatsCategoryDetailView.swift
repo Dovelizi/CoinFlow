@@ -124,7 +124,7 @@ struct StatsCategoryDetailView: View {
             .onChange(of: slice?.id) { newId in
                 // 切换时把选中 chip 滚到可见区
                 if let newId {
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    withAnimation(Motion.smooth) {
                         proxy.scrollTo(newId, anchor: .center)
                     }
                 }
@@ -148,7 +148,7 @@ struct StatsCategoryDetailView: View {
     private func categoryChip(_ cat: StatsCategorySlice) -> some View {
         let isActive = (slice?.id == cat.id)
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
+            withAnimation(Motion.snap) {
                 selectedCategoryId = cat.id
             }
         } label: {
@@ -173,7 +173,7 @@ struct StatsCategoryDetailView: View {
             )
             .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("\(cat.name) 分类\(isActive ? "，已选中" : "")")
     }
 
@@ -394,7 +394,7 @@ private struct BackButton: View {
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("返回")
     }
 }

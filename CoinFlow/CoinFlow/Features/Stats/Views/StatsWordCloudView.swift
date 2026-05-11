@@ -112,7 +112,7 @@ struct StatsWordCloudView: View {
                         .padding(.vertical, 12)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressableSoft)
                     .accessibilityLabel("\(cat.name)，¥\(StatsFormat.intGrouped(cat.amount))，点击查看详情")
                     if idx < items.count - 1 {
                         Rectangle().fill(Color.divider).frame(height: 0.5)
@@ -152,7 +152,7 @@ struct CategoryWordFlowView: View {
                         .padding(.vertical, 2)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("\(w.word) 分类，点击查看详情")
             }
         }

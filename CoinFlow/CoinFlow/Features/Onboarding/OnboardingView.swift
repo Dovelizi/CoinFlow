@@ -34,21 +34,26 @@ struct OnboardingView: View {
                 .font(.system(size: 64, weight: .regular))
                 .foregroundStyle(Color.inkPrimary)
                 .accessibilityHidden(true)
+                .softAppear(delay: 0.05, distance: 16)
 
             VStack(spacing: NotionTheme.space3) {
                 Text("CoinFlow")
                     .font(.custom("PingFangSC-Semibold", size: 36))
                     .foregroundStyle(Color.inkPrimary)
                     .tracking(-0.5)
+                    .softAppear(delay: 0.18, distance: 12)
                 Text("一句话，一张图，一笔账")
                     .font(.custom("PingFangSC-Regular", size: 17))
                     .foregroundStyle(Color.inkSecondary)
+                    .softAppear(delay: 0.30, distance: 12)
             }
         }
     }
 
     private var ctaButton: some View {
         Button {
+            // 引导完成是关键节点：success 触觉 + 由 AppState 切换主流程
+            Haptics.success()
             appState.completeOnboarding()
         } label: {
             Text("开启 CoinFlow")
@@ -61,7 +66,8 @@ struct OnboardingView: View {
                         .fill(Color.inkPrimary)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableAccent)
+        .softAppear(delay: 0.45, distance: 16)
         .accessibilityLabel("开启 CoinFlow")
         .accessibilityHint("完成首次启动引导，进入主页面")
     }

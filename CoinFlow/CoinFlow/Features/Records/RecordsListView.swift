@@ -57,7 +57,7 @@ struct RecordsListView: View {
                     // M7 [01-3]：搜索栏以 inline transition 插入 nav 下方
                     if showSearchBar {
                         searchBarInline
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .transition(Motion.dropDown)
                     }
                     content
                 }
@@ -65,13 +65,11 @@ struct RecordsListView: View {
                 // M7 [01-2]：月份 picker popover 叠层
                 if showMonthPicker {
                     monthPickerOverlay
-                        .transition(.opacity)
+                        .transition(.opacity.animation(Motion.smooth))
                         .zIndex(6)
                 }
             }
-            // M7-Fix16：语音 sheet 打开期间给底层主界面加模糊（对齐参考图上半部分磨砂效果）
-            .blur(radius: showVoice ? 8 : 0)
-            .animation(.easeInOut(duration: 0.25), value: showVoice)
+            // 真机性能修复：删除底层全屏 .blur(8)（与 sheet 的 .ultraThinMaterial 双重模糊导致掉帧）
             .navigationBarHidden(true)
             .enableInteractivePop()
             .navigationDestination(isPresented: $showCategoryManager) {
@@ -210,7 +208,8 @@ struct RecordsListView: View {
             // 左：月份切换器
             HStack {
                 Button {
-                    withAnimation(NotionTheme.animDefault) {
+                    Haptics.tap()
+                    withAnimation(Motion.smooth) {
                         showMonthPicker.toggle()
                         if showMonthPicker { showSearchBar = false }
                     }
@@ -222,6 +221,8 @@ struct RecordsListView: View {
                         Image(systemName: showMonthPicker ? "chevron.up" : "chevron.down")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(Color.inkPrimary)
+                            // chevron 旋转过渡
+                            .animation(Motion.snap, value: showMonthPicker)
                     }
                     .frame(height: 36)
                     .padding(.horizontal, NotionTheme.space4)
@@ -229,10 +230,11 @@ struct RecordsListView: View {
                         RoundedRectangle(cornerRadius: NotionTheme.radiusMD,
                                          style: .continuous)
                             .fill(showMonthPicker ? Color.hoverBgStrong : Color.hoverBg)
+                            .animation(Motion.snap, value: showMonthPicker)
                     )
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableIcon)
                 .accessibilityLabel("切换月份")
                 Spacer()
             }
@@ -242,7 +244,8 @@ struct RecordsListView: View {
             HStack(spacing: NotionTheme.space3) {
                 Spacer()
                 Button {
-                    withAnimation(NotionTheme.animDefault) {
+                    Haptics.tap()
+                    withAnimation(Motion.smooth) {
                         showSearchBar.toggle()
                         if showSearchBar {
                             showMonthPicker = false
@@ -263,10 +266,11 @@ struct RecordsListView: View {
                             RoundedRectangle(cornerRadius: NotionTheme.radiusMD,
                                              style: .continuous)
                                 .fill(showSearchBar ? Color.hoverBgStrong : Color.hoverBg)
+                                .animation(Motion.snap, value: showSearchBar)
                         )
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableIcon)
                 .accessibilityLabel(showSearchBar ? "关闭搜索" : "搜索流水")
 
                 Menu {
@@ -397,7 +401,13 @@ struct RecordsListView: View {
         VStack(spacing: 0) {
             ForEach(Array(group.records.enumerated()), id: \.element.id) { idx, record in
                 RecordRow(record: record, category: vm.category(for: record))
+                    .contentShape(Rectangle())
+                    .background(
+                        // 行级按下反馈：仅高亮背景，不缩放（避免相邻 cell 抖动）
+                        Color.clear
+                    )
                     .onTapGesture {
+                        Haptics.tap()
                         detailRecord = record
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -443,6 +453,7 @@ struct RecordsListView: View {
             Button("重试") { vm.reload() }
                 .font(NotionFont.body())
                 .foregroundStyle(Color.accentBlue)
+                .buttonStyle(.pressable)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -463,12 +474,15 @@ struct RecordsListView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
             if !vm.searchQuery.isEmpty {
-                Button { vm.searchQuery = "" } label: {
+                Button {
+                    Haptics.tap()
+                    vm.searchQuery = ""
+                } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 14))
                         .foregroundStyle(Color.inkTertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableIcon)
                 .accessibilityLabel("清除搜索关键词")
             }
         }
@@ -490,7 +504,7 @@ struct RecordsListView: View {
             Color.black.opacity(0.30)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    withAnimation(NotionTheme.animDefault) { showMonthPicker = false }
+                    withAnimation(Motion.smooth) { showMonthPicker = false }
                 }
             VStack(spacing: 0) {
                 // 留 navBar 高度
@@ -537,8 +551,9 @@ struct RecordsListView: View {
         let year = vm.selectedYearMonth?.year ?? Calendar.current.component(.year, from: Date())
         let isSelected = selectedMonth == month
         Button {
+            Haptics.select()
             vm.selectedYearMonth = YearMonth(year: year, month: month)
-            withAnimation(NotionTheme.animDefault) { showMonthPicker = false }
+            withAnimation(Motion.smooth) { showMonthPicker = false }
         } label: {
             Text("\(month) 月")
                 .font(NotionFont.body())
@@ -556,7 +571,7 @@ struct RecordsListView: View {
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable(haptic: false))
         .accessibilityLabel("\(month) 月\(isSelected ? "，已选中" : "")")
     }
 

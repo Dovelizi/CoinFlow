@@ -223,7 +223,7 @@ struct AppearanceSettingsView: View {
             )
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("\(title) 主题\(isSelected ? "，已选中" : "")")
     }
 
@@ -306,7 +306,7 @@ struct AppearanceSettingsView: View {
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("\(palette.displayName)，\(palette.subtitle)\(isSelected ? "，已选中" : "")")
     }
 }

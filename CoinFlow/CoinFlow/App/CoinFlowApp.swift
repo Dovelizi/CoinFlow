@@ -23,17 +23,21 @@ struct CoinFlowApp: App {
         WindowGroup {
             ZStack {
                 // M7 [13-1] 根路由：首次启动 → OnboardingView；否则 MainTabView
+                // 切换时使用 cross-fade 渐变，避免页面"瞬间替换"的生硬观感
                 Group {
                     if appState.hasCompletedOnboarding {
                         MainTabView()
                             .environmentObject(appState)
                             .environmentObject(amountTint)
+                            .transition(.opacity)
                     } else {
                         OnboardingView()
                             .environmentObject(appState)
                             .environmentObject(amountTint)
+                            .transition(.opacity)
                     }
                 }
+                .animation(Motion.respect(Motion.smooth), value: appState.hasCompletedOnboarding)
                 .task { await appState.bootstrap() }
                 .onChange(of: scenePhase) { newPhase in
                     if newPhase == .active {
@@ -58,7 +62,7 @@ struct CoinFlowApp: App {
                 if scenePhase != .active {
                     PrivacyShieldView()
                         .transition(.opacity)
-                        .animation(.easeInOut(duration: 0.18), value: scenePhase)
+                        .animation(Motion.standard(0.18), value: scenePhase)
                         .zIndex(10)
                 }
 
@@ -67,7 +71,7 @@ struct CoinFlowApp: App {
                     BiometricLockView()
                         .environmentObject(appState)
                         .transition(.opacity)
-                        .animation(.easeInOut(duration: 0.18), value: appState.bioLocked)
+                        .animation(Motion.standard(0.18), value: appState.bioLocked)
                         .zIndex(20)
                 }
             }

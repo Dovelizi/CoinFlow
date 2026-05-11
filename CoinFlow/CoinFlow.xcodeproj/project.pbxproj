@@ -94,6 +94,8 @@
 		9B784CA4EF222E037F21EDA4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 5B7E9AC9C95915C2D3E6903F /* Assets.xcassets */; };
 		9B92CA7C665B45B6B7B4958B /* RecordGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A72E59182D03DA7DF3EDCA6A /* RecordGridView.swift */; };
 		9BA71D842D8762D34903486C /* AmountTintStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E375AAED12CBA1A0765E60AB /* AmountTintStore.swift */; };
+		AAAA000000000000000000B3 /* Motion.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000A3 /* Motion.swift */; };
+		AAAA000000000000000000B4 /* PressableButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = AAAA000000000000000000A4 /* PressableButtonStyle.swift */; };
 		9BCCB1470E1A3EB4C64C528B /* StatsAnalysisHostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A7C0863A05DB39205700BC1 /* StatsAnalysisHostView.swift */; };
 		9E6C66ACACA4D5C2AD9944C8 /* SummaryBitableMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD668E69EBC658A049854737 /* SummaryBitableMapper.swift */; };
 		9E7186ADE61367CC7A7CDE04 /* InteractivePopEnabler.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC2A273E9C78091AB5991AC2 /* InteractivePopEnabler.swift */; };
@@ -157,6 +159,8 @@
 
 /* Begin PBXFileReference section */
 		00FE59DA4F42AC568E1ED616 /* KeyboardDoneToolbar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardDoneToolbar.swift; sourceTree = "<group>"; };
+		AAAA000000000000000000A3 /* Motion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Motion.swift; sourceTree = "<group>"; };
+		AAAA000000000000000000A4 /* PressableButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PressableButtonStyle.swift; sourceTree = "<group>"; };
 		0339C009D923DAA998F6C89C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		034EAA17E7C3652430E3F44F /* AmountFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmountFormatter.swift; sourceTree = "<group>"; };
 		0559BC1BF8F45DEBD90EB87E /* SymbolColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SymbolColor.swift; sourceTree = "<group>"; };
@@ -646,10 +650,12 @@
 				00FE59DA4F42AC568E1ED616 /* KeyboardDoneToolbar.swift */,
 				6A7CFF59C24E5193C97A5B36 /* LiquidGlassATheme.swift */,
 				A1B2C3D4E5F60718293A4B5C /* LiquidGlassRealTheme.swift */,
+				AAAA000000000000000000A3 /* Motion.swift */,
 				9F3444257D5D45919F258880 /* NotionColor.swift */,
 				8C7B1CE25DF0574BF0B4B73D /* NotionFont.swift */,
 				EB0B79A35A811871B2B1AC16 /* NotionTheme+Aliases.swift */,
 				54DFBE2F01ACB3DB1ABAD284 /* NotionTheme.swift */,
+				AAAA000000000000000000A4 /* PressableButtonStyle.swift */,
 			);
 			path = Theme;
 			sourceTree = "<group>";
@@ -844,6 +850,8 @@
 				0A147D3D6E1A1B4D8D133E5E /* NotionFont.swift in Sources */,
 				76A45BF80048B013A7579428 /* KeyboardDoneToolbar.swift in Sources */,
 				9BA71D842D8762D34903486C /* AmountTintStore.swift in Sources */,
+				AAAA000000000000000000B3 /* Motion.swift in Sources */,
+				AAAA000000000000000000B4 /* PressableButtonStyle.swift in Sources */,
 				358FB33DEECB04468C6F8C2D /* AppConfig.swift in Sources */,
 				792860D60D5F3769F98F2604 /* Schema.swift in Sources */,
 				5EE5ED1ACF4598A8876AC083 /* Migrations.swift in Sources */,

@@ -104,11 +104,12 @@ final class RecordDetailViewModel: ObservableObject {
         }
     }
 
-    /// UIKit AmountTextFieldUIKit 拦截回调（震动 + 红字 + toast 触发源）
+    /// UIKit AmountTextFieldUIKit 拦截回调（红字 + toast 触发源）
+    /// 用户偏好：点击交互不需要震动（Haptics.tap 已 no-op）
     func handleClamp(_ reason: AmountInputGate.ClampReason) {
         amountClampReason = reason
         amountClampedAt = Date()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptics.tap()
     }
 
     /// "已达上限"轻提示是否当前可见。拦截后保留 2 秒。

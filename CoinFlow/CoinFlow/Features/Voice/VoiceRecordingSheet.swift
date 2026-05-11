@@ -78,14 +78,17 @@ struct VoiceRecordingSheet: View {
             HStack {
                 tierPill
                 Spacer()
-                Button { onCancel() } label: {
+                Button {
+                    Haptics.tap()
+                    onCancel()
+                } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(Color.inkSecondary)
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableIcon)
                 .accessibilityLabel("关闭")
             }
         }
@@ -135,6 +138,8 @@ struct VoiceRecordingSheet: View {
             : Color.black.opacity(0.15)
 
         return Button {
+            // 录音切换是关键操作：medium 触觉 = "重要按钮"
+            Haptics.medium()
             if isIdle {
                 onPressDown()
             } else {
@@ -149,7 +154,7 @@ struct VoiceRecordingSheet: View {
                 Circle()
                     .stroke(ringColor.opacity(activated ? 0.50 : 0.35), lineWidth: 1.5)
                     .frame(width: 112, height: 112)
-                // 内球
+                // 内球（录音中呼吸缩放，提示麦克风正在工作）
                 Circle()
                     .fill(
                         RadialGradient(
@@ -160,17 +165,48 @@ struct VoiceRecordingSheet: View {
                     )
                     .frame(width: 92, height: 92)
                     .shadow(color: shadowColor, radius: activated ? 18 : 10, y: 5)
+                    .modifier(RecordingPulse(active: activated))
                 // 图标：idle = mic，recording = stop
                 Image(systemName: activated ? "stop.fill" : "mic.fill")
                     .font(.system(size: 30, weight: .semibold))
                     .foregroundStyle(Color.white)
+                    .transition(.opacity)
+                    .id(activated)
             }
             .contentShape(Circle())
         }
-        .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.2), value: activated)
+        .buttonStyle(.pressable(haptic: false))
+        .animation(Motion.snap, value: activated)
         .accessibilityLabel(isIdle ? "开始录音" : "停止录音")
         .accessibilityHint(isIdle ? "点击开始语音记账" : "点击结束并识别账单内容")
+    }
+
+    /// 录音中呼吸式 pulse：active=true 时持续呼吸；false 时立即归位
+    private struct RecordingPulse: ViewModifier {
+        var active: Bool
+        @State private var scale: CGFloat = 1.0
+        func body(content: Content) -> some View {
+            content
+                .scaleEffect(scale)
+                .onChange(of: active) { newValue in
+                    if newValue {
+                        // 启动持续呼吸：1.0 → 1.06 反复
+                        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                            scale = 1.06
+                        }
+                    } else {
+                        // 立即归位（不重复动画）
+                        withAnimation(Motion.snap) { scale = 1.0 }
+                    }
+                }
+                .onAppear {
+                    if active {
+                        withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                            scale = 1.06
+                        }
+                    }
+                }
+        }
     }
 
     // MARK: - Bottom hint
@@ -180,7 +216,7 @@ struct VoiceRecordingSheet: View {
             Text(isIdle ? "点击开始" : "点击结束")
                 .font(NotionFont.bodyBold())
                 .foregroundStyle(Color.inkPrimary)
-                .animation(.easeOut(duration: 0.15), value: isIdle)
+                .animation(Motion.snap, value: isIdle)
         }
     }
 }

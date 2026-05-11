@@ -87,7 +87,7 @@ struct BillsSummaryPushBanner: View {
                         .frame(width: 28, height: 28)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
             }
             .padding(.horizontal, NotionTheme.space5)
             .padding(.vertical, NotionTheme.space3)
@@ -101,7 +101,7 @@ struct BillsSummaryPushBanner: View {
             )
             .shadow(color: Color.black.opacity(0.15), radius: 10, x: 0, y: 4)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .padding(.horizontal, NotionTheme.space5)
         .padding(.top, 4)
         .transition(.move(edge: .top).combined(with: .opacity))

@@ -106,8 +106,8 @@ private struct LiquidGlassCardModifier: ViewModifier {
                 }
             }
             // 双层阴影塑造悬浮感（与 fallback v6 同步）
-            .shadow(color: .black.opacity(0.18), radius: 4,  x: 0, y: 2)
-            .shadow(color: .black.opacity(0.28), radius: 20, x: 0, y: 10)
+            // 真机性能修复：双层 shadow 改单层
+            .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 6)
         } else {
             content.modifier(GlassFallbackCardModifier(cornerRadius: cornerRadius))
         }
@@ -181,8 +181,8 @@ private struct GlassFallbackCardModifier: ViewModifier {
                     .allowsHitTesting(false)
             )
             // 4. 双层阴影：近景锐 + 远景柔，带出“悬浮”的层次感
-            .shadow(color: .black.opacity(0.18), radius: 4,  x: 0, y: 2)
-            .shadow(color: .black.opacity(0.28), radius: 20, x: 0, y: 10)
+            // 真机性能修复：双层 shadow 改单层
+            .shadow(color: .black.opacity(0.22), radius: 10, x: 0, y: 6)
     }
 }
 
@@ -195,8 +195,8 @@ private struct LiquidGlassPillModifier: ViewModifier {
         if #available(iOS 26.0, *) {
             content.glassEffect(.regular.interactive(), in: .capsule)
                 // 胶囊阴影加强：让 TabBar / 浮岱明显“脱离背景”
-                .shadow(color: .black.opacity(0.20), radius: 4,  x: 0, y: 2)
-                .shadow(color: .black.opacity(0.32), radius: 22, x: 0, y: 10)
+        // 真机性能修复：双层 shadow 改单层
+        .shadow(color: .black.opacity(0.24), radius: 11, x: 0, y: 6)
         } else {
             content.modifier(GlassFallbackPillModifier())
         }
@@ -256,8 +256,8 @@ private struct GlassFallbackPillModifier: ViewModifier {
                     .allowsHitTesting(false)
             )
             // 双层阴影：近景锐 + 远景柔（胶囊浮起感）
-            .shadow(color: .black.opacity(0.20), radius: 4,  x: 0, y: 2)
-            .shadow(color: .black.opacity(0.32), radius: 22, x: 0, y: 10)
+        // 真机性能修复：双层 shadow 改单层
+        .shadow(color: .black.opacity(0.24), radius: 11, x: 0, y: 6)
     }
 }
 

@@ -88,7 +88,12 @@ struct RecordDetailSheet: View {
                     Button("保存") {
                         // 收起键盘后再 commit，避免焦点未同步到 vm 中间态的 race
                         focusedField = nil
-                        if vm.commit() { dismiss() }
+                        if vm.commit() {
+                            Haptics.success()
+                            dismiss()
+                        } else {
+                            Haptics.error()
+                        }
                     }
                     .font(NotionFont.bodyBold())
                     .foregroundStyle((vm.isDirty && vm.canSave) ? Color.inkPrimary : Color.inkTertiary)
@@ -200,7 +205,9 @@ struct RecordDetailSheet: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .animation(.easeInOut(duration: 0.18), value: vm.amountClampedAt)
+        // 金额超限/非法字符时 amount 区域抖动
+        .shake(trigger: vm.amountClampedAt)
+        .animation(Motion.standard(0.18), value: vm.amountClampedAt)
     }
 
     // MARK: - Clamped Toast（金额超限彩蛋，与 NewRecordModal 行为一致）
@@ -230,12 +237,12 @@ struct RecordDetailSheet: View {
     private func showClampedToast() {
         guard let reason = vm.amountClampReason,
               AmountInputGate.shouldShowDreamToast(for: reason) else { return }
-        withAnimation(.easeOut(duration: 0.18)) {
+        withAnimation(Motion.exit(0.18)) {
             clampedToastText = AmountInputGate.dreamToastText
         }
         clampedToastTask?.cancel()
         let task = DispatchWorkItem {
-            withAnimation(.easeIn(duration: 0.22)) {
+            withAnimation(Motion.standard(0.22)) {
                 clampedToastText = nil
             }
         }
@@ -254,7 +261,7 @@ struct RecordDetailSheet: View {
                 showChevron: true
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableRow)
     }
 
     // MARK: - Note
@@ -333,6 +340,7 @@ struct RecordDetailSheet: View {
 
     private var deleteButton: some View {
         Button {
+            Haptics.warn()
             showDeleteConfirm = true
         } label: {
             HStack {
@@ -348,7 +356,7 @@ struct RecordDetailSheet: View {
                     .fill(Color(hex: "#DF5452").opacity(0.12))
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable(haptic: false))
     }
 
     // MARK: - Generic field row

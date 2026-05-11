@@ -55,7 +55,7 @@ struct BiometricLockView: View {
                     )
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .disabled(isAuthenticating)
                 .padding(.horizontal, NotionTheme.space6)
                 // 错误文案放在 CTA 下方，保持主区域稳定（首次进入与失败时 layout 一致）

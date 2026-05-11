@@ -108,7 +108,7 @@ struct IconPickerView: View {
                         .font(.system(size: 14))
                         .foregroundStyle(Color.inkTertiary)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("清空搜索")
             }
         }
@@ -138,7 +138,7 @@ struct IconPickerView: View {
     private func chip(title: String, isFirst: Bool = false) -> some View {
         let active = (selectedGroup == title) && query.isEmpty
         Button {
-            withAnimation(NotionTheme.animDefault) {
+            withAnimation(Motion.smooth) {
                 selectedGroup = title
                 if !query.isEmpty {
                     query = ""    // 切 chip 自动清空搜索
@@ -159,7 +159,7 @@ struct IconPickerView: View {
                         .stroke(active ? Color(hex: tintColorHex) : Color.clear, lineWidth: 1)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("分类 \(title)")
         .accessibilityAddTraits(active ? .isSelected : [])
     }
@@ -179,7 +179,7 @@ struct IconPickerView: View {
         let tint = Color(hex: tintColorHex)
         return Button {
             selected = ic.systemName
-            UISelectionFeedbackGenerator().selectionChanged()
+            Haptics.select()
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: NotionTheme.radiusMD)
@@ -195,7 +195,7 @@ struct IconPickerView: View {
                     .stroke(active ? tint : Color.clear, lineWidth: 1.5)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("图标 \(ic.aliases.first ?? ic.systemName)")
         .accessibilityAddTraits(active ? .isSelected : [])
     }

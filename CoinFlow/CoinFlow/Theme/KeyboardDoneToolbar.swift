@@ -96,7 +96,7 @@ private struct KeyboardDoneToolbarModifier: ViewModifier {
                     .foregroundStyle(Color.accentBlue)
                     .padding(.horizontal, NotionTheme.space5)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableSoft)
             .accessibilityLabel("收起键盘")
         }
         .frame(height: 44)

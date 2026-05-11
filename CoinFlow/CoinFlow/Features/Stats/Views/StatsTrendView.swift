@@ -70,7 +70,7 @@ struct StatsTrendView: View {
                     .padding(2)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.15)) { range = r }
+                        withAnimation(Motion.snap) { range = r }
                     }
             }
         }

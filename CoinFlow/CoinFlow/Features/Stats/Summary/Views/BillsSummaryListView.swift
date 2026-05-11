@@ -75,7 +75,7 @@ struct BillsSummaryListView: View {
             // 浮窗 overlay
             if let s = floatingSummary {
                 SummaryFloatingCard(summary: s) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(Motion.snap) {
                         floatingSummary = nil
                     }
                 }
@@ -84,7 +84,7 @@ struct BillsSummaryListView: View {
         }
         .onAppear { reload() }
         .navigationBarHidden(true)
-        .animation(.easeInOut(duration: 0.2), value: floatingSummary?.id)
+        .animation(Motion.snap, value: floatingSummary?.id)
     }
 
     // MARK: - NavBar
@@ -163,7 +163,7 @@ struct BillsSummaryListView: View {
                     .stroke(Color.border, lineWidth: NotionTheme.borderWidth)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("模拟\(kind.displayName)首页推送")
     }
 
@@ -368,13 +368,13 @@ struct BillsSummaryListView: View {
                 VStack(spacing: NotionTheme.space3) {
                     ForEach(items) { s in
                         Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(Motion.snap) {
                                 floatingSummary = s
                             }
                         } label: {
                             historyRow(s)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.pressableSoft)
                     }
                 }
             }
@@ -481,7 +481,7 @@ struct BillsSummaryListView: View {
                 await MainActor.run {
                     generatingKind = nil
                     reload()
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(Motion.snap) {
                         floatingSummary = s
                     }
                 }

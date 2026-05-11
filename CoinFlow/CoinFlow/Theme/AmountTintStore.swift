@@ -90,11 +90,11 @@ final class AmountTintStore: ObservableObject {
         self.palette = AmountPalette(rawValue: raw) ?? .system
     }
 
-    /// 外部切换入口；animated = true 走 NotionTheme.animDefault
+    /// 外部切换入口；animated = true 走 Motion.smooth
     func setPalette(_ new: AmountPalette, animated: Bool = true) {
         guard new != palette else { return }
         if animated {
-            withAnimation(NotionTheme.animDefault) {
+            withAnimation(Motion.smooth) {
                 self.palette = new
             }
         } else {

@@ -74,18 +74,18 @@ struct VoiceWizardStepView: View {
         )
     }
 
-    /// 触发金额拦截反馈：震动 + 红字 + 彩蛋 toast
+    /// 触发金额拦截反馈：红字 + 彩蛋 toast（用户偏好：禁用震动）
     private func triggerAmountClamped(_ reason: AmountInputGate.ClampReason) {
         amountClampReason = reason
         amountClampedAt = Date()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Haptics.tap()
         if AmountInputGate.shouldShowDreamToast(for: reason) {
-            withAnimation(.easeOut(duration: 0.18)) {
+            withAnimation(Motion.exit(0.18)) {
                 clampedToastText = AmountInputGate.dreamToastText
             }
             clampedToastTask?.cancel()
             let task = DispatchWorkItem {
-                withAnimation(.easeIn(duration: 0.22)) {
+                withAnimation(Motion.standard(0.22)) {
                     clampedToastText = nil
                 }
             }
@@ -206,7 +206,7 @@ struct VoiceWizardStepView: View {
                         .foregroundStyle(Color.inkPrimary)
                         .frame(width: 36, height: 36)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("关闭语音记账")
                 Spacer()
                 Button { vm.skipCurrent() } label: {
@@ -215,7 +215,7 @@ struct VoiceWizardStepView: View {
                         .foregroundStyle(Color.dangerRed)
                         .frame(width: 36, height: 36)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("删除当前笔")
             }
             .padding(.horizontal, NotionTheme.space5)
@@ -253,7 +253,7 @@ struct VoiceWizardStepView: View {
                         progressDot(index: i)
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressableSoft)
                 }
                 Spacer()
                 let missingCount = vm.currentBill.missingFields.count
@@ -374,7 +374,7 @@ struct VoiceWizardStepView: View {
                     .padding(.leading, 4)
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: amountClampedAt)
+        .animation(Motion.standard(0.18), value: amountClampedAt)
     }
 
     private var directionColor: Color {
@@ -436,7 +436,7 @@ struct VoiceWizardStepView: View {
                         .fill(active ? Color.surfaceOverlay : Color.clear)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel(label)
     }
 
@@ -495,7 +495,7 @@ struct VoiceWizardStepView: View {
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
     }
 
     private var timeRow: some View {
@@ -620,7 +620,7 @@ struct VoiceWizardStepView: View {
                                 .fill(Color.hoverBg)
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("放弃此笔")
 
                 Button {
@@ -638,7 +638,7 @@ struct VoiceWizardStepView: View {
                                       : Color.hoverBgStrong)
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .disabled(!vm.canProceed)
                 .accessibilityLabel(isLastPendingBill ? "完成录入" : "确认并进入下一笔")
             }

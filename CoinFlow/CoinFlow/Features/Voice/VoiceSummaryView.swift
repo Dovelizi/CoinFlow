@@ -70,7 +70,7 @@ struct VoiceSummaryView: View {
                         .foregroundStyle(Color.inkPrimary)
                         .frame(width: 36, height: 36)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .padding(.trailing, NotionTheme.space4)
             }
         }
@@ -190,7 +190,7 @@ struct VoiceSummaryView: View {
                             .fill(Color.accentBlue)
                     )
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableSoft)
             .padding(.horizontal, NotionTheme.space5)
             .padding(.top, NotionTheme.space4)
             .padding(.bottom, NotionTheme.space5)

@@ -83,7 +83,7 @@ struct DataImportExportView: View {
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("返回")
                 Spacer()
             }
@@ -209,7 +209,7 @@ struct DataImportExportView: View {
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .disabled(isExporting)
         .accessibilityLabel(title)
     }

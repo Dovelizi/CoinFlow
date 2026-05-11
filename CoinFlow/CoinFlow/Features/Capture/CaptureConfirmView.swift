@@ -161,7 +161,7 @@ struct CaptureConfirmView: View {
                         .padding(.top, NotionTheme.space5)
                         .padding(.bottom, NotionTheme.space9)
                         // M7-Fix21：状态切换淡入，避免 success 时的高度突变 + 闪动
-                        .animation(.easeInOut(duration: 0.25), value: mode)
+                        .animation(Motion.smooth, value: mode)
                     }
                     .onAppear {
                         if scrollToBottom, isSuccess {
@@ -234,7 +234,7 @@ struct CaptureConfirmView: View {
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("关闭")
                 Spacer()
                 Button {
@@ -247,7 +247,7 @@ struct CaptureConfirmView: View {
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("重新识别")
             }
             .padding(.horizontal, NotionTheme.space4)
@@ -371,7 +371,7 @@ struct CaptureConfirmView: View {
                         .padding(8)
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressableSoft)
                     .accessibilityLabel("查看原图大图")
                 }
             }
@@ -526,12 +526,12 @@ struct CaptureConfirmView: View {
         // 仅对 overLimit 触发"小目标"彩蛋；其他原因走红字提示就够了
         guard let reason = vm.amountClampReason,
               AmountInputGate.shouldShowDreamToast(for: reason) else { return }
-        withAnimation(.easeOut(duration: 0.18)) {
+        withAnimation(Motion.exit(0.18)) {
             clampedToastText = AmountInputGate.dreamToastText
         }
         clampedToastTask?.cancel()
         let task = DispatchWorkItem {
-            withAnimation(.easeIn(duration: 0.22)) {
+            withAnimation(Motion.standard(0.22)) {
                 clampedToastText = nil
             }
         }
@@ -564,7 +564,7 @@ struct CaptureConfirmView: View {
                             .foregroundStyle(amountValidation == .error ? Color.dangerRed : directionColor)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
 
                 // 金额 TextField：UIKit AmountTextFieldUIKit 在 delegate 层硬拦截，
                 // 与 NewRecord/RecordDetail/VoiceWizard 行为完全一致；
@@ -745,7 +745,7 @@ struct CaptureConfirmView: View {
         if tappable {
             return AnyView(
                 Button(action: action) { content }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressableSoft)
                     .accessibilityLabel("\(label)：\(value)")
                     .accessibilityHint("点击修改")
             )
@@ -855,7 +855,7 @@ struct CaptureConfirmView: View {
                 )
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressableSoft)
             .accessibilityLabel(vm.note.isEmpty ? "添加备注" : "编辑备注：\(vm.note)")
         }
     }
@@ -929,7 +929,7 @@ struct CaptureConfirmView: View {
                             .shadow(color: Color.black.opacity(0.15), radius: 2, y: 1)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("保留原截图")
                 .accessibilityValue(keepScreenshot ? "已开启" : "已关闭")
             }
@@ -967,7 +967,7 @@ struct CaptureConfirmView: View {
                                 .fill(Color.hoverBg)
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel(isFailed ? "重新选择" : "丢弃")
 
                 Button {
@@ -983,7 +983,7 @@ struct CaptureConfirmView: View {
                                 .fill(canSave ? Color.accentBlue : Color.hoverBgStrong)
                         )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .disabled(!canSave)
                 .accessibilityLabel(saveButtonTitle)
             }

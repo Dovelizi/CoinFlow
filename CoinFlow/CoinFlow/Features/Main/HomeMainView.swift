@@ -78,9 +78,9 @@ struct HomeMainView: View {
                     .trackScrollForTabBar(tabBarVisibility)
                 }
             }
-            // M7-Fix16：语音 sheet 打开期间给底层主界面加模糊，对齐参考图上半部分磨砂效果
-            .blur(radius: showVoice ? 8 : 0)
-            .animation(.easeInOut(duration: 0.25), value: showVoice)
+            // 真机性能修复：之前对底层主界面加 .blur(8) 跟随 sheet 动画，
+            // 真机每帧整屏高斯模糊 + sheet 自带 .ultraThinMaterial 双重模糊 → 掉帧。
+            // 删除底层 .blur，由 sheet 的真玻璃负责毛玻璃观感。
             .navigationBarHidden(true)
             .enableInteractivePop()
             .onAppear { vm.reload() }
@@ -156,7 +156,7 @@ struct HomeMainView: View {
                             summaryFloating = s
                         },
                         onDismiss: {
-                            withAnimation(.easeInOut(duration: 0.22)) {
+                            withAnimation(Motion.tabSwitch) {
                                 appState.pendingSummaryPush = nil
                             }
                         }
@@ -164,13 +164,13 @@ struct HomeMainView: View {
                     .id(s.id)   // 新 push 触发 view 重建 + 重置计时
                 }
             }
-            .animation(.easeInOut(duration: 0.25), value: appState.pendingSummaryPush?.id)
+            .animation(Motion.smooth, value: appState.pendingSummaryPush?.id)
         }
         // 浮窗 overlay：由 banner 点击触发；关闭时清 state
         .overlay {
             if let s = summaryFloating {
                 SummaryFloatingCard(summary: s) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
+                    withAnimation(Motion.snap) {
                         summaryFloating = nil
                     }
                 }
@@ -178,7 +178,7 @@ struct HomeMainView: View {
                 .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: summaryFloating?.id)
+        .animation(Motion.snap, value: summaryFloating?.id)
     }
 
     // MARK: - Brand hero
@@ -235,6 +235,7 @@ struct HomeMainView: View {
                         return a
                     }()
                     Text(attr)
+                        .numericTransition()
                         .amountGroupAutoFit(scaleFloor: 0.3)   // 56pt → 最小 ~17pt
                         .padding(.horizontal, NotionTheme.space5)
                 }
@@ -297,8 +298,7 @@ struct HomeMainView: View {
                 hint: "从相册选择 / 拍照",
                 onTap: {
                     showQuickAction = true
-                },
-                onLongPress: nil
+                }
             )
             entryCard(
                 icon: "mic.fill",
@@ -307,8 +307,7 @@ struct HomeMainView: View {
                 hint: "按住说一句",
                 onTap: {
                     showVoice = true
-                },
-                onLongPress: nil
+                }
             )
         }
     }
@@ -316,8 +315,7 @@ struct HomeMainView: View {
     @ViewBuilder
     private func entryCard(icon: String, title: String, subtitle: String,
                            hint: String,
-                           onTap: @escaping () -> Void,
-                           onLongPress: (() -> Void)?) -> some View {
+                           onTap: @escaping () -> Void) -> some View {
         Button(action: onTap) {
             VStack(spacing: NotionTheme.space5) {
                 Image(systemName: icon)
@@ -347,13 +345,12 @@ struct HomeMainView: View {
             .frame(height: 168)
             .cardSurface(cornerRadius: 14, notionFill: Color.hoverBg)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("\(title)，\(subtitle)")
-        .simultaneousGesture(
-            // 长按 0.4s 触发 quickAction（仅当 onLongPress 非空）
-            LongPressGesture(minimumDuration: 0.4)
-                .onEnded { _ in onLongPress?() }
-        )
+        // 真机滚动修复：之前在此挂了一个 LongPressGesture(0.4s)，但所有
+        // 调用方都传 onLongPress: nil（永远不触发动作），却会和 ScrollView 的
+        // pan 抢手势仲裁 → 用户从这两张大卡片起手向上滑时，0.4s 内 ScrollView
+        // 不响应 → 表现为"滑不动"。直接删除该手势。
     }
 
     // MARK: - Load error card（M7 [00-3]）
@@ -382,7 +379,7 @@ struct HomeMainView: View {
                     .padding(.vertical, 4)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.pressable)
         }
         .padding(NotionTheme.space5)
         .background(
@@ -472,31 +469,40 @@ struct HomeMainView: View {
             .padding(.vertical, 14)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableRow)
         .accessibilityLabel(title)
     }
 
     // MARK: - Recent records
 
     private var recentRecords: some View {
-        VStack(spacing: NotionTheme.space4) {
-            Text("最近记录")
-                .font(.custom("PingFangSC-Semibold", size: 14))
-                .foregroundStyle(Color.inkPrimary)
-                .frame(maxWidth: .infinity)
+        // 真机滚动修复：之前用 .tappableCard { ... } 包裹整个 VStack，
+        // 该 modifier 内部依赖 simultaneousGesture(DragGesture(minimumDistance: 0))
+        // 检测按压，在嵌套 ScrollView 中会与 pan 抢手势仲裁 → 卡片区域无法上下滑。
+        // 改用 Button + .pressableSoft：iOS 标准做法，按钮的系统 hit-test 与
+        // ScrollView 已被苹果优化协作（手指落下后系统先观察是否移动 → 移动则让 ScrollView 接管，
+        // 静止抬手才触发 Button action），既保留按压视觉反馈又不阻塞滚动。
+        // 这里直接换 Button 而非改通用 modifier，因为 recentRow 内部纯展示无 NavigationLink。
+        Button { switchTab(.records) } label: {
+            VStack(spacing: NotionTheme.space4) {
+                Text("最近记录")
+                    .font(.custom("PingFangSC-Semibold", size: 14))
+                    .foregroundStyle(Color.inkPrimary)
+                    .frame(maxWidth: .infinity)
 
-            VStack(spacing: 0) {
-                ForEach(Array(vm.recentRecords.prefix(3).enumerated()), id: \.element.id) { idx, record in
-                    recentRow(record: record, category: vm.category(for: record))
-                    if idx < min(2, vm.recentRecords.count - 1) {
-                        Rectangle().fill(Color.divider).frame(height: 0.5)
-                            .padding(.leading, 28 + NotionTheme.space5)
+                VStack(spacing: 0) {
+                    ForEach(Array(vm.recentRecords.prefix(3).enumerated()), id: \.element.id) { idx, record in
+                        recentRow(record: record, category: vm.category(for: record))
+                        if idx < min(2, vm.recentRecords.count - 1) {
+                            Rectangle().fill(Color.divider).frame(height: 0.5)
+                                .padding(.leading, 28 + NotionTheme.space5)
+                        }
                     }
                 }
+                .cardSurface(cornerRadius: 14, notionFill: Color.hoverBg)
             }
-            .cardSurface(cornerRadius: 14, notionFill: Color.hoverBg)
         }
-        .onTapGesture { switchTab(.records) }
+        .buttonStyle(.pressableSoft)
     }
 
     @ViewBuilder
@@ -531,6 +537,9 @@ struct HomeMainView: View {
         }
         .padding(.horizontal, NotionTheme.space5)
         .padding(.vertical, 12)
+        // 让 HStack 内 Spacer 占据的中间空白区也参与命中测试，
+        // 否则 Button label 的 hit-test 不覆盖 Spacer，点击行中间空白区无反应。
+        .contentShape(Rectangle())
     }
 
     private func timeText(_ date: Date) -> String {

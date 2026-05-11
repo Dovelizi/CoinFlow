@@ -102,11 +102,11 @@ struct CategoryListView: View {
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("返回")
                 Spacer()
                 Button {
-                    withAnimation(NotionTheme.animDefault) {
+                    withAnimation(Motion.smooth) {
                         mode = mode == .edit ? .main : .edit
                     }
                 } label: {
@@ -116,7 +116,7 @@ struct CategoryListView: View {
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel(mode == .edit ? "完成编辑" : "进入编辑模式")
             }
             .padding(.horizontal, NotionTheme.space4)
@@ -207,8 +207,8 @@ struct CategoryListView: View {
             if mode == .edit {
                 Button {
                     if row.isPreset {
-                        // 预设不可删，给出轻量提示
-                        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+                        // 预设不可删（用户偏好：禁用震动，仅保留视觉/逻辑约束）
+                        Haptics.warn()
                         return
                     }
                     showDeleteAlert = row
@@ -219,7 +219,7 @@ struct CategoryListView: View {
                         .frame(width: 32, height: 44)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel(row.isPreset ? "预设分类不可删除" : "删除分类 \(row.name)")
             }
         }
@@ -243,7 +243,7 @@ struct CategoryListView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
         .accessibilityLabel("新建分类")
     }
 
@@ -339,7 +339,7 @@ struct AddCategorySheet: View {
                         .padding(.horizontal, NotionTheme.space4)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 Spacer()
                 Button { save() } label: {
                     Text("保存")
@@ -348,7 +348,7 @@ struct AddCategorySheet: View {
                         .padding(.horizontal, NotionTheme.space4)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .disabled(!canSave)
             }
             .padding(.horizontal, NotionTheme.space4)
@@ -428,7 +428,7 @@ struct AddCategorySheet: View {
                         .fill(active ? Color.surfaceOverlay : Color.clear)
                 )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressableSoft)
     }
 
     private var iconBlock: some View {
@@ -459,7 +459,7 @@ struct AddCategorySheet: View {
                                     .padding(-3)
                             )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.pressableSoft)
                     .accessibilityLabel("颜色 \(hex)")
                 }
             }

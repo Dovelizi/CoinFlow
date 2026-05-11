@@ -81,7 +81,7 @@ struct StatsSubNavBar: View {
                         .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressableSoft)
                 .accessibilityLabel("返回")
                 Spacer()
                 if let trailingIcon {
