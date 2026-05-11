@@ -72,6 +72,13 @@ struct MainTabView: View {
     /// 非拖动时为 nil；拖动中跟随 indicator 中心实时更新。松手后用作切换目标。
     @State private var hoverTab: AppTab? = nil
 
+    /// 全局 ScreenshotInbox 协调器：负责"双击背面截图 → 识别记账"链路。
+    /// 提到根层挂载，是因为 ScreenshotInbox 通过 PassthroughSubject 即时分发，
+    /// 订阅者必须在 App active 那一刻就在视图树里。之前只有 HomeMainView 订阅，
+    /// 导致用户上次离开 App 时不在首页时事件丢失（HomeMainView 不在树中）。
+    /// 在 MainTabView 根层订阅可覆盖任意 tab，且不强制切换当前 tab。
+    @StateObject private var screenshotInboxCoord = PhotoCaptureCoordinator()
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ZStack {
@@ -102,6 +109,29 @@ struct MainTabView: View {
                         removal: .opacity
                     ))
             }
+        }
+        // 全局订阅 ScreenshotInbox：快捷指令 Intent 把截图放剪贴板后，CoinFlowApp
+        // 在 scenePhase==.active 时通过 imageSubject 发布；这里在 MainTabView 根层订阅，
+        // 任何 tab 下都能立即接收并触发 CaptureConfirmView 识别流程。
+        .onReceive(ScreenshotInbox.shared.imageSubject) { image in
+            Task { await screenshotInboxCoord.handle(image: image) }
+        }
+        .sheet(item: Binding(
+            get: {
+                screenshotInboxCoord.sourceImage.map {
+                    ScreenshotInboxSession(id: screenshotInboxCoord.captureId, image: $0)
+                }
+            },
+            set: { _ in screenshotInboxCoord.reset() }
+        )) { session in
+            // 与 HomeMainView 完全一致的 CaptureConfirmView 入口：
+            // 内部跑 OCR + LLM，未配置 LLM 时回退单笔流程。
+            CaptureConfirmView(
+                sourceImage: session.image,
+                scrollToBottom: false,
+                onSaved: { _ in screenshotInboxCoord.reset() },
+                onRetake: { screenshotInboxCoord.retake() }
+            )
         }
     }
 
@@ -182,8 +212,8 @@ struct MainTabView: View {
             indicatorShape(highlighted: isDragging)
                 .frame(width: frame.width, height: frame.height)
                 // 拖动时显著放大成独立浮起气泡（容许横向略超出单 tab——参考图也是这样）
-                .scaleEffect(x: isDragging ? 1.30 : 1.0,
-                             y: isDragging ? 1.55 : 1.0,
+                .scaleEffect(x: isDragging ? 1.28 : 1.0,
+                             y: isDragging ? 1.85 : 1.0,
                              anchor: .center)
                 .shadow(color: Color.black.opacity(isDragging ? 0.45 : 0),
                         radius: isDragging ? 20 : 0,
@@ -202,8 +232,9 @@ struct MainTabView: View {
     }
 
     /// indicator 视觉
-    /// - 静止状态（highlighted = false）：深色半透明胶囊（贴合 tab bar，融入背景）
-    /// - 按住放大状态（highlighted = true）：浅色高对比胶囊（独立浮起气泡，参考图样式）
+    /// - 形状：胶囊（Capsule）
+    /// - 静止状态（highlighted = false）：深色半透明，贴合 tab bar
+    /// - 按住放大状态（highlighted = true）：浅色高对比，独立浮起气泡
     @ViewBuilder
     private func indicatorShape(highlighted: Bool) -> some View {
         if LGAThemeRuntime.isEnabled {
@@ -243,9 +274,11 @@ struct MainTabView: View {
         let baseTab: AppTab = dragAnchorTab ?? selected
         guard let base = tabFrames.first(where: { $0.tab == baseTab }) else { return nil }
         // 计算 indicator center: base.midX + dragTranslation
-        // 但限制不能拖出最左/最右 tab 的范围
-        let minX = tabFrames.map(\.midX).min() ?? base.midX
-        let maxX = tabFrames.map(\.midX).max() ?? base.midX
+        // 限制范围：在"最左 tab.midX - overflow" ~ "最右 tab.midX + overflow"之间。
+        // overflow 让 indicator 在首页/我的边缘 tab 上拖动时能轻微“冲出"tab 胶囊左右边缘，呈现“气泡可以边跳出”的手感。
+        let overflow: CGFloat = 14
+        let minX = (tabFrames.map(\.midX).min() ?? base.midX) - overflow
+        let maxX = (tabFrames.map(\.midX).max() ?? base.midX) + overflow
         let rawX = base.midX + (isDragging ? dragTranslation : 0)
         let clampedX = max(minX, min(maxX, rawX))
 
@@ -385,6 +418,16 @@ struct MainTabView: View {
 // 旧版只回调 swipe direction 一次（threshold 触发后 fire）。新版本需要"跟手 indicator"，
 // 必须暴露 began / changed(translation) / ended 三阶段，让 SwiftUI 实时更新 indicator 偏移。
 // 仍走 window 挂载 + cancelsTouchesInView=false 方案，不被 .glassEffect(.interactive) 吞。
+
+// MARK: - 全局截图识别 sheet 的 Identifiable 包装
+//
+// `.sheet(item:)` 要求传入 Identifiable 类型；PhotoCaptureCoordinator 的
+// `sourceImage: UIImage?` 不是 Identifiable，所以这里包一层。`captureId` 由
+// coordinator 内部生成，每次 reset 后 handle 新图会换新 id，从而触发 sheet 重建。
+private struct ScreenshotInboxSession: Identifiable {
+    let id: UUID
+    let image: UIImage
+}
 
 private struct HorizontalPanRecognizer: UIViewRepresentable {
     let onBegan: () -> Void

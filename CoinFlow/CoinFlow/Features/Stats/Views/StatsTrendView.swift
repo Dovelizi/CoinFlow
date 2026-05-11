@@ -58,14 +58,19 @@ struct StatsTrendView: View {
     }
 
     private var rangeSwitcher: some View {
-        HStack(spacing: 0) {
+        // liquidGlass 主题下 Color.canvasBG 是页面深色底，叠在彩色卡片上选中段呈黑块。
+        // 与 NewRecordModal/SettingsView 段控件保持同一兜底方案：液态玻璃下走半透白高亮。
+        let activeFill: Color = LGAThemeRuntime.isLiquidGlass
+            ? Color.white.opacity(0.18)
+            : Color.canvasBG
+        return HStack(spacing: 0) {
             ForEach(TrendRange.allCases, id: \.self) { r in
                 Text(r.rawValue)
                     .font(NotionFont.bodyBold())
                     .foregroundStyle(range == r ? Color.inkPrimary : Color.inkTertiary)
                     .frame(maxWidth: .infinity)
                     .frame(height: 36)
-                    .background(range == r ? Color.canvasBG : Color.clear)
+                    .background(range == r ? activeFill : Color.clear)
                     .cornerRadius(6)
                     .padding(2)
                     .contentShape(Rectangle())

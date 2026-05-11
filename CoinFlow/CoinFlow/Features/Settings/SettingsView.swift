@@ -422,6 +422,11 @@ struct SettingsView: View {
 
     private func layoutSegmentButton(_ l: RecordsLayout) -> some View {
         let active = recordsListLayout == l
+        // liquidGlass 主题下 Color.surfaceOverlay 渲染为深色实心 → 在紫色玻璃胶囊上呈黑块。
+        // 与 NewRecordModal 中支出/收入段控件保持同一兜底方案：液态玻璃下走半透白高亮。
+        let activeFill: Color = LGAThemeRuntime.isLiquidGlass
+            ? Color.white.opacity(0.18)
+            : Color.surfaceOverlay
         return Button {
             recordsListLayout = l
             settings.set(key: SettingsKey.recordsListLayout, value: l.rawValue)
@@ -437,7 +442,7 @@ struct SettingsView: View {
             .padding(.vertical, 8)
             .background(
                 RoundedRectangle(cornerRadius: NotionTheme.radiusSM, style: .continuous)
-                    .fill(active ? Color.surfaceOverlay : Color.clear)
+                    .fill(active ? activeFill : Color.clear)
             )
         }
         .buttonStyle(.pressableSoft)

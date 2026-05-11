@@ -415,6 +415,11 @@ struct AddCategorySheet: View {
 
     private func kindButton(_ k: CategoryKind, label: String) -> some View {
         let active = selectedKind == k
+        // liquidGlass 主题下 Color.surfaceOverlay 渲染为深色实心 → 在紫色玻璃 sheet 上呈黑块。
+        // 与 NewRecordModal/SettingsView 段控件保持同一兜底方案：液态玻璃下走半透白高亮。
+        let activeFill: Color = LGAThemeRuntime.isLiquidGlass
+            ? Color.white.opacity(0.18)
+            : Color.surfaceOverlay
         return Button {
             selectedKind = k
         } label: {
@@ -425,7 +430,7 @@ struct AddCategorySheet: View {
                 .padding(.vertical, NotionTheme.space3)
                 .background(
                     RoundedRectangle(cornerRadius: NotionTheme.radiusMD)
-                        .fill(active ? Color.surfaceOverlay : Color.clear)
+                        .fill(active ? activeFill : Color.clear)
                 )
         }
         .buttonStyle(.pressableSoft)

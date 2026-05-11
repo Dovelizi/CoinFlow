@@ -16,7 +16,8 @@
 //         （此属性不触发"粘贴"授权弹窗）
 //       - 若含图片且在 3 秒时间窗内 → 调 pasteboard.image
 //         （此时 iOS 会弹系统级"允许粘贴"授权小弹窗，用户点一下即可）
-//       - 读到图片 → 通过 imageSubject 发布给 HomeMainView
+//       - 读到图片 → 通过 imageSubject 发布给 MainTabView 根层订阅者
+//         （任何 tab 下都能立即弹 CaptureConfirmView 识别流程）
 //    5. 消费成功后清掉时间戳，同一张图不会重复触发
 //
 //  设计要点：

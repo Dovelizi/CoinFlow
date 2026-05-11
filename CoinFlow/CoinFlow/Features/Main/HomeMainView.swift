@@ -93,12 +93,8 @@ struct HomeMainView: View {
                     vm.reload()
                 }
             }
-            // 订阅 ScreenshotInbox：快捷指令 Intent 把截图放进系统剪贴板后，
-            // CoinFlowApp 在 scenePhase==.active 时读取并通过 imageSubject 发布；
-            // 这里直接喂给 captureCoord 触发现有 CaptureConfirmView sheet。
-            .onReceive(ScreenshotInbox.shared.imageSubject) { image in
-                Task { await captureCoord.handle(image: image) }
-            }
+            // 注：ScreenshotInbox 订阅已上提到 MainTabView 根层（任何 tab 都能识别）。
+            // 这里 captureCoord 仅服务于「用户主动从 entry card 走 PhotosPicker / 拍照」路径。
             // quickAction 改走系统 sheet（presentationDetents），天然盖住底部 tab bar
             .sheet(isPresented: $showQuickAction) {
                 quickActionSheetContent
