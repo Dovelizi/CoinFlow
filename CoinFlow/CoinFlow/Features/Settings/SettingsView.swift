@@ -47,7 +47,6 @@ struct SettingsView: View {
     @State private var showSyncStatus: Bool = false
     @State private var showDataIO: Bool = false
     @State private var showSummaryList: Bool = false
-    @State private var privacyAmountMask: Bool = false
     /// 首次启动日期 → "加入 N 天"副标题
     @State private var joinedDaysText: String = ""
     /// “系统配置”页跳转状态
@@ -147,7 +146,6 @@ struct SettingsView: View {
                     accountSection
                     recordSection
                     syncDataSection
-                    privacySection
                     aboutSection
                 }
                 .padding(NotionTheme.space5)
@@ -161,7 +159,6 @@ struct SettingsView: View {
                     accountSection
                     recordSection
                     syncDataSection
-                    privacySection
                     aboutSection
                 }
                 .padding(NotionTheme.space5)
@@ -659,36 +656,6 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - 隐私段
-
-    private var privacySection: some View {
-        SettingsSection(title: "隐私", icon: "lock.shield") {
-            VStack(spacing: 0) {
-                Toggle(isOn: $privacyAmountMask) {
-                    HStack(spacing: NotionTheme.space5) {
-                        Image(systemName: "eye.slash")
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundStyle(themedIcon)
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("金额脱敏显示")
-                                .font(NotionFont.body())
-                                .foregroundStyle(themeStore.isEnabled ? Color.white : Color.inkPrimary)
-                            Text("V2 开放 · 首页与列表金额显示 ¥•••")
-                                .font(NotionFont.micro())
-                                .foregroundStyle(themedTertiary)
-                        }
-                    }
-                }
-                .tint(themedTint)
-                .disabled(true)
-                .padding(.horizontal, NotionTheme.space5)
-                .padding(.vertical, 12)
-                .accessibilityLabel("金额脱敏显示（V2 开放）")
-            }
-        }
-    }
-
     // MARK: - 关于段
 
     private var aboutSection: some View {
@@ -820,9 +787,7 @@ struct SettingsView: View {
     }
 
     private var appVersion: String {
-        let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-        let b = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
-        return "\(v) (\(b))"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
     }
 
     // MARK: - Persistence

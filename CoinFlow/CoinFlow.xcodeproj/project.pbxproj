@@ -112,6 +112,7 @@
 		B95C01DA196D68930106DB36 /* ASREngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03DEA0DB6B0A4BD85DCEB533 /* ASREngine.swift */; };
 		BC7B914C7D889CDD7B3B9D2E /* RecordChangeNotifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6770D13D21ED8353C4C35B8 /* RecordChangeNotifier.swift */; };
 		BCFF91BDC8A2C4BFF18FA995 /* CategoryIconLibraryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C548F626CA32B01910BA0F62 /* CategoryIconLibraryTests.swift */; };
+		A1B2C3D4E5F6789012345601 /* CardSwipeEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6789012345602 /* CardSwipeEngineTests.swift */; };
 		BF42DDA299D2D89DFF0C7610 /* SyncQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = F278810224CF9F53215E0C18 /* SyncQueue.swift */; };
 		BFBFD9028BC547B8CAC742DC /* VoiceParsingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03E06D546124ACE477E7ED26 /* VoiceParsingView.swift */; };
 		C003E3B149B7025D259CB400 /* BillsSummaryAggregator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 479C6C84AD455A20555A6D93 /* BillsSummaryAggregator.swift */; };
@@ -264,6 +265,7 @@
 		C4C92EC9A265085F8E576D22 /* NotionTheme+Aliases.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NotionTheme+Aliases.swift"; sourceTree = "<group>"; };
 		C52BF23F7F614D3F30EF3B05 /* StatsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsHubView.swift; sourceTree = "<group>"; };
 		C548F626CA32B01910BA0F62 /* CategoryIconLibraryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CategoryIconLibraryTests.swift; path = CoinFlowTests/CategoryIconLibraryTests.swift; sourceTree = SOURCE_ROOT; };
+		A1B2C3D4E5F6789012345602 /* CardSwipeEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CardSwipeEngineTests.swift; path = CoinFlowTests/CardSwipeEngineTests.swift; sourceTree = SOURCE_ROOT; };
 		C5E2F8BD9DE1322D7D0526B0 /* RecordBitableMapperTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RecordBitableMapperTests.swift; path = CoinFlowTests/RecordBitableMapperTests.swift; sourceTree = SOURCE_ROOT; };
 		C66A226BDC2D0974BDFFF1E5 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		C79ACD02BCBED76F41058F55 /* AmountFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmountFormatter.swift; sourceTree = "<group>"; };
@@ -326,6 +328,7 @@
 			isa = PBXGroup;
 			children = (
 				C548F626CA32B01910BA0F62 /* CategoryIconLibraryTests.swift */,
+				A1B2C3D4E5F6789012345602 /* CardSwipeEngineTests.swift */,
 				A506D75DA82877D17E32E44B /* FeishuTokenManagerTests.swift */,
 				C5E2F8BD9DE1322D7D0526B0 /* RecordBitableMapperTests.swift */,
 				1F2F32E2A7BF6C3C50E10923 /* RecordRepositorySyncTests.swift */,
@@ -990,6 +993,7 @@
 				E9A15DCD02747E7902A3DCDD /* FeishuTokenManagerTests.swift in Sources */,
 				6A2D1318D8B1149E8ED747FD /* RecordBitableMapperTests.swift in Sources */,
 				BCFF91BDC8A2C4BFF18FA995 /* CategoryIconLibraryTests.swift in Sources */,
+				A1B2C3D4E5F6789012345601 /* CardSwipeEngineTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1035,7 +1039,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lemolli.coinflow.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -1072,7 +1076,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lemolli.coinflow.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1138,7 +1142,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lemolli.coinflow.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -1155,7 +1159,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.8;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lemolli.coinflow.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;

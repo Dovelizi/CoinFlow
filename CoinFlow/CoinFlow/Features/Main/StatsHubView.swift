@@ -3,20 +3,22 @@
 //
 //  设计基线：design/screens/05-stats/main-light.png（实际是 wallet 卡片堆叠样式）
 //
-//  形态：
+//  形态（紧凑卡片堆叠，iOS 控制中心式滑动）：
 //   - 顶部 NavBar："统计 / N 张报告 · YYYY 年 M 月" + 右上 grid icon
 //   - Hero 区：本月净增大数字 + 收入/支出/笔数 mini KPI
-//   - 中间：水平卡片堆栈（紧凑堆叠：中央 + 左右各 3，渐变切换无回弹）
+//   - 中间：水平卡片堆栈（中央 + 左右各 3 张露边，slotTable 4 档预计算）
 //   - 底部：分页指示器 + 滑动提示
 //
 //  交互：
-//   - 左右滑动：切换中央卡片（首末张为边界，越界给 toast 提示）— 手势层（HorizontalPanCatcher）水平铺满
-//     整条卡片行，配合 UIKit 级 delegate 阻断，TabView 横滑永远抢不到手势
-//   - 点击最上层卡（中央卡）任意位置：跳转到该卡对应的详情页面（push）
-//   - 点击侧边卡区域（非中央卡矩形内）：归位到该方向的相邻卡（不跳转），
-//     再次点击新的中央卡才跳转 — 避免误触发陌生页面
-//   - 所有卡背景统一 surfaceOverlay 实色（完全不透明），内容垂直+水平居中，
-//     外层 clipShape 保证不溢出卡片圆角边界
+//   - 左右滑动：trackOffset 跟手位移，dragProgress = -trackOffset / switchLimit
+//     驱动所有卡 effective slot 实时插值，传送带式连续过渡；
+//     松手按"位置 + 速度惯性"算最近 idx，单次 spring 同步推进 currentIdx +
+//     归零 trackOffset — 一气呵成不分步翻页
+//     — 手势层（HorizontalPanCatcher）水平铺满整条卡片行，配合 UIKit 级
+//     delegate 阻断，TabView 横滑永远抢不到手势
+//   - 点击中央卡矩形：跳转到该卡对应的详情页面（push）
+//   - 点击侧边卡区域：归位到那一侧的最近卡（不跳转）— 与 pan 共用 settle 路径
+//   - 所有卡背景统一 surfaceOverlay 实色，内容垂直+水平居中，clipShape 不溢出
 //
 //  关键：手势隔离方案
 //   MainTabView 外层用 TabView(.page) 做 tab 切换，它内部是 UIPageViewController
@@ -37,11 +39,15 @@ struct StatsHubView: View {
     /// 设计意图为打开统计 tab 即聚焦本月数据，左右滑动查看其他报告。
     /// 注意：若调整 `allCards` 顺序，需同步更新此默认值。
     @State private var currentIdx: Int = 4
-    /// 横向拖拽偏移（由 UIKit pan catcher 驱动）
-    @State private var dragOffsetX: CGFloat = 0
-    /// 分步翻页进行中（commitSwitch 递归期间为 true）。
-    /// 期间忽略新的 pan 结束，避免 dragOffsetX 被中途打断。
-    @State private var isChaining: Bool = false
+    /// 手势/动画驱动的跟手位移（静止时恒为 0）。
+    /// 与 dragProgress 同源：progress = -trackOffset / switchLimit，驱动所有卡 effective slot 插值。
+    /// 正值 = 手指向右拖（想看上一张），progress < 0；负值反之。
+    /// `settle(to:)` 会在切换 currentIdx 同时同步调整 trackOffset 以保证视觉连续。
+    @State private var trackOffset: CGFloat = 0
+    /// 手势起点的 trackOffset 快照（H1/H2 修复点）。
+    /// onPanChanged(dx) 期间 trackOffset = panBaseline + dx，避免 spring 进行中被新手势直接覆盖。
+    /// settle 后、以及 handlePanStarted 中会同步重置。
+    @State private var panBaseline: CGFloat = 0
     /// 导航栈路径：用类型擦除的 NavigationPath 同时承载 StatsAnalysisDestination
     /// 与词云/排行点击跳转用的 CategoryDetailTarget。
     @State private var navPath: NavigationPath = NavigationPath()
@@ -72,6 +78,14 @@ struct StatsHubView: View {
             .navigationBarHidden(true)
             .enableInteractivePop()
             .onAppear { vm.reload() }
+            // 从详情页 pop 回 hub 时刷新一次：
+            // BillsSummary 仓库写入没有 .recordsDidChange 通知，
+            // 用户在 BillsSummaryListView 生成新 summary 后返回 hub，
+            // 这里保证 vm.cardPreviews[.summary] 同步刷新。
+            // 注：iOS 16 部署目标，使用旧式单闭包 onChange（iOS 17 双参版本不可用）。
+            .onChange(of: navPath.isEmpty) { isEmpty in
+                if isEmpty { vm.reload() }
+            }
             .navigationDestination(for: StatsAnalysisDestination.self) { dest in
                 destinationView(dest)
             }
@@ -290,19 +304,16 @@ struct StatsHubView: View {
 
     // MARK: - Wallet style horizontal stack
     //
-    // 设计：紧凑堆叠 + 传送带式连续滑动（方案 A）
-    //   - 静态时：卡片紧凑堆叠，左右各 3 张露边（offsetBase 等差 32pt）
-    //   - 拖拽时：dragProgress = -dragOffsetX / switchLimit（不夹 ±1，可跨多张）
+    // 设计：紧凑堆叠（4 档预计算）+ trackOffset 跟手 + 单 spring 吸附（iOS 控制中心式）
+    //   - 静态时：卡片紧凑堆叠，左右各 3 张露边（offsetBase 等差：0/40/68/92）
+    //   - 拖拽时：trackOffset 直接跟手位移；dragProgress = -trackOffset / switchLimit
     //     每张卡的 effective slot = slotOffset - dragProgress 做相邻档插值
     //     → 整组卡像传送带一样跟着手指连续滑过 N 张
     //     → 中央卡渐变缩小淡出，目标方向上下一张连续浮现到中央
     //   - 松手（handlePanEnded）：用"位置 + 速度惯性"算最终落点，
-    //     四舍五入到最近整数 = delta（跨张数）
-    //   - 切换（commitSwitch）：单次 spring 推 dragOffsetX → -delta·switchLimit
-    //     dragProgress 平滑收敛到 +delta，effective 全程连续插值
-    //     动画结束后 transaction 无动画地 currentIdx += delta + 归零
-    //     → 全程零跳变，spring 自带的减速节奏 = "惯性吸附"的视觉感受
-    //   - compositingGroup 做 GPU 离屏合成
+    //     四舍五入到最近整数 = 目标 idx
+    //   - 切换（settle）：单次 spring 同步推进 currentIdx + 归零 trackOffset
+    //     → 不再分步翻页，整组卡一气呵成滑到目标，dragProgress 全程连续无跳变
 
     /// 单个可见 slot 的几何参数（紧凑堆叠预计算表）
     private struct SlotGeometry {
@@ -322,13 +333,10 @@ struct StatsHubView: View {
               shadowRadius: 22, shadowOpacity: 0.20, shadowY: 8,
               fadeOpacity: 1.00),
         // absSlot = 1
-        // offsetBase = 40：中央卡 drag=±1 时跟手位移最大 ±40pt（跟手率 40%）。
-        // 仅放大空间间距，scale/opacity/shadow 不动 → 不改变形态层次，只是邻卡静态露边更多。
         .init(scale: 0.94, offsetBase: 40,
               shadowRadius: 14, shadowOpacity: 0.12, shadowY: 5,
               fadeOpacity: 0.88),
         // absSlot = 2
-        // 等差延续：增量 28（与 [0]→[1] 的 40 比稍扩散，节奏自然）
         .init(scale: 0.88, offsetBase: 68,
               shadowRadius: 8,  shadowOpacity: 0.06, shadowY: 3,
               fadeOpacity: 0.55),
@@ -338,122 +346,107 @@ struct StatsHubView: View {
               fadeOpacity: 0.0),
     ]
 
-    /// 形态/层级共用缓动：2 阶 smoothstep（6x⁵ - 15x⁴ + 10x³）
-    /// - 作用：让被驱动的属性在两端（0/1）几乎不变，集中在中段（0.4~0.6）才快速变化
-    /// - 应用范围：
-    ///     · fadeOpacity（中央卡淡出 / 邻卡淡入）—— 隐藏/出现时机延迟
-    ///     · scale（中央卡渐进缩小 / 邻卡渐进放大）—— 与 fade 同节奏，避免脱节
-    ///     · zIndex（中央卡下沉 / 目标邻卡上浮）—— 连续交接，消除阶跃跳变
-    /// - 不影响 offset/shadow —— 位移与阴影保持线性，跟手触感不变
+    /// 形态/层级共用缓动：2 阶 smoothstep（6x⁵ - 15x⁴ + 10x³），两端钝、中段陡。
+    /// 应用于 fadeOpacity / scale / zIndex 的相邻档插值。
     private static func fadeEase(_ x: CGFloat) -> CGFloat {
         let c = max(0, min(1, x))
         return c * c * c * (c * (c * 6 - 15) + 10)
     }
 
+    /// 拖拽强调放大系数（"浮在最上层的卡片在滑动时再稍微放大一点"）。
+    ///
+    /// 公式：boostMax · |drag| · max(0, 1 - |effective|)
+    ///   - 静止（|drag|=0）→ 0：不影响默认形态
+    ///   - 远离中央（|effective|≥1）→ 0：邻卡及更远卡不参与
+    ///   - 中央卡 + 拖到一半 → boostMax · 0.5 · 1 = 2.5%
+    ///   - 中央卡 + 拖到极限 → boostMax = 5%
+    ///
+    /// 单调性：是 |effective| 的弱单调递减函数，且 ≥ 0；
+    /// 不破坏"z 与 scale 同序"不变量（scale 仍是 |effective| 的递减函数）。
+    private static let boostMax: CGFloat = 0.05
+    static func boostFactor(absEff: CGFloat, drag: CGFloat) -> CGFloat {
+        let dragMag = min(abs(drag), 1)
+        let proximity = max(0, 1 - absEff)
+        return boostMax * dragMag * proximity
+    }
+
     /// 最大可见层数（中央外左右各 N 张），= slotTable.count - 1
     private static let maxAbsSlot: Int = 3
 
-    /// 卡片宽度 / 高度（用户反馈：中间卡片适当调大；260→290 / 360→400）
+    /// 卡片宽度 / 高度
     private static let cardWidth: CGFloat = 290
     private static let cardHeight: CGFloat = 400
 
-    /// 拖拽归一化基准（决定 dragProgress 的归一化分母 & commitSwitch spring 阶段 1 目标位移）。
-    /// 同时也是切换触发阈值的基准：`handlePanEnded` 用 `switchLimit * 0.5` 作为位移判定阈值。
-    /// 紧凑堆叠下不做 1:1 跟手位移，保留 100pt 让 spring 阶段 1 的目标几何与原实现一致。
+    /// 拖拽归一化基准：trackOffset 累计 switchLimit pt = 已切换 1 张卡。
+    /// 同时也是 effective slot 公式的归一化分母。
     private static let switchLimit: CGFloat = 100
 
-    // MARK: 多卡片连续滑动调参（方案 A：传送带式 + 松手惯性吸附）
-    //
-    // 模型：dragProgress 不再夹在 ±1，而是按 dragOffsetX / switchLimit 直接换算，
-    //       可以连续跨越多个整数。所有可见卡按 effective = slotOffset - dragProgress
-    //       实时插值 → 整组卡像传送带一样跟着手指滑过 N 张。
-    //       松手时按"位置 + 速度惯性"算最终落点（四舍五入到整数 = 跨张数），
-    //       一次 spring 直接推到目标位置，动画结束原子提交。
-
-    /// 拖动跟手系数：手指位移 × follow → dragOffsetX。
-    /// 0.7 = 手指 1000pt 对应进度 7 张（switchLimit=100），日常一甩约 3~5 张，比 1.0 更可控。
-    private static let dragFollow: CGFloat = 0.7
     /// 速度惯性时长（秒）：松手后用 vx · inertiaTime 估算还会"飞"多远。
-    /// 0.18 = 1500pt/s 的甩动会再多滑 ~270pt = 2.7 张，自然得到"再飞几张"的体感。
     private static let inertiaTime: CGFloat = 0.18
     /// 单次手势最多跨越的卡片数（绝对上限，避免速度爆表算出 50 张）。
     private static let maxJump: Int = 12
-    /// 翻页每张的 spring 时长（0.18s/张）。全程统一 → “唤唤唤”节奏感；
-    /// 不随 delta 增长，保证 5 张跨越仍不拖沱（0.18 × 5 ≈ 0.9s，足够看清每张又不拖踢脚）。
-    private static let flipDuration: Double = 0.18
+    /// 边界橡皮筋阻尼系数 / 最大额外位移（首末张继续向外拖时使用）。
+    private static let rubberFactor: CGFloat = 0.28
+    private static let rubberLimit: CGFloat = 70
 
-    /// 当前拖拽进度：-1 ... 1
+    /// 当前拖拽进度（trackOffset 归一化到"张数"维度，可跨越多张）。
     ///
-    /// 方向语义（关键）：
-    ///   手指向左拖（dx < 0 → dragOffsetX < 0）= 想看下一张 = delta = +1 → dragProgress 应 → +1
-    ///   手指向右拖（dx > 0 → dragOffsetX > 0）= 想看上一张 = delta = -1 → dragProgress 应 → -1
-    /// 即 dragProgress 与 commitSwitch 的 delta 同号；与 dragOffsetX 异号（故取负）。
+    /// 数学：progress = -trackOffset / switchLimit
+    ///   手指向左拖（dx < 0 → trackOffset < 0）= 想看下一张 → progress > 0
+    ///   手指向右拖（dx > 0 → trackOffset > 0）= 想看上一张 → progress < 0
     ///
-    /// 这样换来的好处（这是"真正跟手 + 联动"的根因）：
-    ///   - effective = slotOffset - dragProgress 与手指方向同向：
-    ///     向左拖时中央卡 effective < 0（dir=-1），x = -offsetMag（向左跟手移动）；
-    ///     右邻卡（slot=+1）effective: 1 → 0，x: +32 → 0（从右侧平滑滑入中央）；
-    ///     左邻卡（slot=-1）effective: -1 → -2，x: -32 → -60（向左继续退场）。
-    ///     → 整组卡片在 effective 驱动下天然 carousel 联动，无需额外 groupShift。
-    ///   - commitSwitch 阶段 1 spring 把 dragOffsetX 推向 -delta * switchLimit（与手势同向继续推进，
-    ///     不再反弹越过 0），dragProgress 平滑从手势值收敛到 +delta，effective 全程单调，无视觉违和。
-    ///
-    /// 静态：`dragOffsetX = 0` → 0
-    /// 拖动：实时跟手（取负即可，因为 effective 公式吃 dragProgress 而不是直接吃 dragOffsetX）
-    /// 松手切换：spring 推 dragOffsetX 到 -delta * switchLimit（= -delta），让 dragProgress → +delta，
-    /// 动画完成后才原子性地 `currentIdx += delta` 并 `dragOffsetX = 0`（无动画），
-    /// 此时 dragProgress 又回到 0，但每张卡 effective 不变 → 全程零跳变。
-    /// 当前拖拽进度（方案 A：可跨越多张，传送带式连续滑动）
-    ///
-    /// 数学：progress = -dragOffsetX / switchLimit，正负号约定见下。
-    ///   手指向左拖（dx < 0 → dragOffsetX < 0）= 想看下一张 → progress > 0
-    ///   手指向右拖（dx > 0 → dragOffsetX > 0）= 想看上一张 → progress < 0
-    ///
-    /// 不再夹在 ±1：dragOffsetX 累计很大时 progress 也跟着变大（如 2.7 = 已滑过 2.7 张）。
-    /// 所有可见卡按 effective = slotOffset - progress 实时插值，整组卡像传送带一样滑动。
+    /// effective slot = slotOffset - progress：拖拽时整组卡按 effective 在 slotTable 相邻档插值，
+    /// 像传送带一样平滑滑过 N 张；中央卡渐变缩小淡出，目标方向邻卡渐变浮现到中央。
     ///
     /// 边界夹紧：按"剩余可滑张数"硬夹（首张时 progress 不能 < 0，末张时不能 > 剩余张数），
-    /// 这样手指拖到边界外只会让橡皮筋（dragOffsetX 已被 handlePanChanged 阻尼）失效化，
-    /// 视觉上整组卡片就停在合法范围内不再继续滑。
+    /// 配合 handlePanChanged 的橡皮筋，越界手势视觉上会停在合法范围内。
+    ///
+    /// 实现：委托给 `CardSwipeEngine.dragProgress`，保证测试覆盖的逻辑与运行时一致。
     private var dragProgress: CGFloat {
-        let raw = -dragOffsetX / Self.switchLimit
-        // 还能向"下一张"方向滑多少张（progress 正方向上限）
-        let forwardRoom = CGFloat(totalCardCount - 1 - currentIdx)
-        // 还能向"上一张"方向滑多少张（progress 负方向下限取负值）
-        let backwardRoom = CGFloat(currentIdx)
-        return max(-backwardRoom, min(forwardRoom, raw))
+        engineSnapshot.dragProgress
+    }
+
+    /// 用当前 View 状态构造一个临时 engine 实例（值类型，零成本），
+    /// 让 dragProgress / atLeftEdge / atRightEdge 等派生量都通过统一逻辑计算。
+    /// 同时复原 panBaseline，让 onPanChanged(dx) 能正确使用 "手势起点 + dx" 语义。
+    private var engineSnapshot: CardSwipeEngine {
+        var e = CardSwipeEngine(totalCount: totalCardCount, initialIdx: currentIdx)
+        e.trackOffset = trackOffset
+        e.restorePanBaseline(panBaseline)
+        return e
     }
 
     private var horizontalCardStack: some View {
         let cardW = Self.cardWidth
         let cardH = Self.cardHeight
 
-        // 7+ 张可见：基础 maxAbsSlot=3，再按 dragProgress 动态扩展。
-        // 拖到 progress=2.7 时，slot=+3 (= effective 0.3) 已经接近中央位置，必须可见；
-        // 同时反向远端 slot=-3 已经 effective=-5.7（远到完全不可见），但保留也无伤大雅。
-        // 取 ceil(|progress|) + maxAbsSlot 即可保证目标方向上至少多渲染 |progress| 张。
+        // ============================================================
+        // 渲染模型（真实卡片身份制，避免 SwiftUI 把 settle 当成"内容替换"）
+        // ============================================================
         //
-        // 边界处理：去掉循环。currentIdx 在两端时不再绕回，仅渲染存在的下标。
-        let dragMag = Int(ceil(abs(dragProgress)))
-        let range = Self.maxAbsSlot + dragMag
-        let visibleSlots: [(slotOffset: Int, cardIdx: Int)] = (-range...range).compactMap {
-            let idx = currentIdx + $0
-            guard idx >= 0 && idx < totalCardCount else { return nil }
-            return ($0, idx)
-        }
+        // 历史 bug：之前用 slotOffset 作为 ForEach.id，每个 slot 是"屏幕固定位置槽"，
+        // settle 切 currentIdx 时 slot 视图位置不动、绑定的 cardIdx 直接换一张内容；
+        // SwiftUI 看到的是"id=0 的视图内容变了" → 完全跳过过渡动画 →
+        // 用户感知到中央卡"内容硬切"（录屏 f_018→f_020 现象）。
+        //
+        // 修复：ForEach.id 改为真实卡片下标 realIdx ∈ [0, totalCount)。
+        // 每张卡的"槽位偏移" = realIdx - currentIdx - dragProgress（连续函数）。
+        // settle 时 currentIdx +1、trackOffset 同步补偿 +switchLimit，
+        // 数学上 (realIdx - currentIdx - dragProgress) 完全不变 →
+        // SwiftUI 看到的是"同一组视图的几何属性都没变" → 0 跳变 0 重新渲染。
+        //
+        // 性能：absSlotEff > 3.5 的卡早返回 EmptyView（fade<0.01），9 张卡里
+        // 实际进完整渲染分支的 ≤ 8 张，与原方案一致。
+        // ============================================================
+        let drag = dragProgress
 
         return ZStack {
-            ForEach(visibleSlots, id: \.slotOffset) { slot in
-                slotCardView(slot: slot, cardW: cardW, cardH: cardH)
+            ForEach(0..<totalCardCount, id: \.self) { realIdx in
+                realCardView(realIdx: realIdx, drag: drag, cardW: cardW, cardH: cardH)
             }
-            // UIKit 手势拦截层：占满卡片堆叠行（水平铺满屏幕），独占水平 pan；
-            // 这样无论手指落在卡片带的任何位置，TabView 都无法抢走手势，
-            // 从根本上避免"左右滑卡片 → 整屏跟着滑"的串扰。
-            // 视觉上卡片 x 位移在 slotCardView 内做 clamp，不会超出 cardW + 侧卡展开宽度。
-            //
-            // 关键：UIViewRepresentable 默认没有 intrinsic size，必须显式给 frame
-            // 铺满 ZStack，否则 catcher 尺寸为 0 → tap/pan 都不会触发（点击/滑动全失效）
+            // UIKit 手势拦截层：水平铺满，独占水平 pan
             HorizontalPanCatcher(
+                onStart:   { handlePanStarted() },
                 onChanged: { dx in handlePanChanged(dx: dx) },
                 onEnded:   { dx, vx in handlePanEnded(dx: dx, vx: vx) },
                 onTap:     { location, size in
@@ -466,8 +459,7 @@ struct StatsHubView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Rectangle())
             .allowsHitTesting(true)
-            // 必须高于所有卡片的 zIndex（中央卡 = 100），否则中央卡会吃掉 tap/pan
-            // 这是 SwiftUI ZStack 的坑：显式 zIndex 会覆盖"后入者居上"的默认叠放顺序
+            // 必须高于所有卡片 zIndex（中央卡 ≈ 100），否则中央卡会吃掉 tap/pan
             .zIndex(999)
         }
         .frame(maxWidth: .infinity)
@@ -478,150 +470,155 @@ struct StatsHubView: View {
     // MARK: - UIKit pan 回调
 
     /// 是否处于左边界（首张，不能再向"上一张"方向滑 = 手势 dx > 0 = 向右拖）
-    private var atLeftEdge: Bool { currentIdx == 0 }
+    private var atLeftEdge: Bool { engineSnapshot.atLeftEdge }
     /// 是否处于右边界（末张，不能再向"下一张"方向滑 = 手势 dx < 0 = 向左拖）
-    private var atRightEdge: Bool { currentIdx == totalCardCount - 1 }
+    private var atRightEdge: Bool { engineSnapshot.atRightEdge }
 
     private func handlePanChanged(dx: CGFloat) {
-        // 方案 A：传送带式连续滑动
-        //   中部：dragOffsetX = dx × dragFollow，可以无限累计（手指划越多卡过越多）
-        //   边界：向"无卡"侧拖时强阻尼 + clamp，让用户感到"拉得动但很重"
-        let outward = (dx > 0 && atLeftEdge) || (dx < 0 && atRightEdge)
-        if outward {
-            let sign: CGFloat = dx > 0 ? 1 : -1
-            dragOffsetX = sign * min(abs(dx) * 0.28, 70)
-        } else {
-            dragOffsetX = dx * Self.dragFollow
-        }
+        // 委托 engine 计算 trackOffset（含边界橡皮筋），避免数学在两处重复
+        var e = engineSnapshot
+        e.onPanChanged(dx: dx)
+        trackOffset = e.trackOffset
     }
 
-    private func handlePanEnded(dx: CGFloat, vx: CGFloat) {
-        // 分步翻页进行中：忽略新 pan 结束，避免 dragOffsetX 被中途打断
-        if isChaining { return }
-
-        // 方案 A：松手惯性吸附
-        //
-        // 思路：把"当前已滑过多少张（dragProgress）"+"速度还会再飞多远"加起来，
-        //      四舍五入到最近整数 = 这次手势最终切换的张数 delta。
-        //      然后用一次 spring 把 dragOffsetX 推到目标位置，整组卡像传送带一样
-        //      平滑滑过 |delta| 张，动画结束原子提交 currentIdx。
-        //
-        // 公式：
-        //   inertiaProgress = -vx · inertiaTime / switchLimit   （vx 与 progress 异号，故取负）
-        //   predicted = currentProgress + inertiaProgress
-        //   delta = round(predicted)，按边界 clamp，再按 maxJump 兜底
-
-        let currentProgress = dragProgress
-        let inertiaProgress = -vx * Self.inertiaTime / Self.switchLimit
-        let predicted = currentProgress + inertiaProgress
-
-        // 四舍五入到最近整数
-        var delta = Int(predicted.rounded())
-
-        // maxJump 上限保护（防止极端速度算出离谱跨张数）
-        if delta > Self.maxJump { delta = Self.maxJump }
-        if delta < -Self.maxJump { delta = -Self.maxJump }
-
-        // 边界 clamp + 越界提示
-        let target = max(0, min(totalCardCount - 1, currentIdx + delta))
-        delta = target - currentIdx
-
-        if delta == 0 {
-            // 落点 = 当前卡：可能是手势太轻、也可能是已在边界还想往外滑
-            // 后者给一次提示（与拖拽时的橡皮筋视觉呼应）
-            if (predicted > 0.5 && atRightEdge) {
-                showEdgeHint("已是最后一张")
-            } else if (predicted < -0.5 && atLeftEdge) {
-                showEdgeHint("已是第一张")
-            }
-            withAnimation(Motion.respect(Motion.smooth)) { dragOffsetX = 0 }
-        } else {
-            commitSwitch(delta: delta)
+    /// pan started：记录手势起点的 trackOffset 快照。
+    /// 这是 H1/H2 bug 的修复点：spring 进行中开始新手势时，不会出现"trackOffset 被 dx 直接覆盖"的跳变。
+    /// 后续 onPanChanged(dx) 会以 panBaseline + dx 计算 trackOffset。
+    private func handlePanStarted() {
+        // 冻结 spring：用禁动画 transaction 重赋值 trackOffset，等价于取消剩余 spring、从最后一帧起跳
+        var tx = Transaction()
+        tx.disablesAnimations = true
+        let frozen = trackOffset
+        withTransaction(tx) {
+            trackOffset = frozen
         }
+        // 记录 panBaseline 为当前 trackOffset。后续 handlePanChanged 里 engineSnapshot 会复原这个值。
+        panBaseline = trackOffset
     }
 
-    /// 切换提交（翻书式分步翻页）
+    private func handlePanEnded(dx _: CGFloat, vx: CGFloat) {
+        // 委托 engine 计算落点 + 边界提示决策
+        let decision = engineSnapshot.onPanEnded(vx: vx)
+        switch decision.hint {
+        case .leftEdge:  showEdgeHint("已是第一张")
+        case .rightEdge: showEdgeHint("已是最后一张")
+        case nil: break
+        }
+        settle(to: decision.targetIdx)
+    }
+
+    /// 单 spring 吸附到目标 idx：currentIdx 与 trackOffset 在**同一个动画块**里被联动插值。
     ///
-    /// 思路：跨多张拆分为 N 次单张切换，每张用 0.18s spring，依次接续。
-        ///   → 视觉上能看到每一张依次"唤、唤、唤"翻过中央，5 张跨越约 0.9s。
-    /// 路径：
-    /// - 单张：手势末未完成的 dragOffsetX 从当前值 spring 到 -1·switchLimit → 原子提交→结束
-    /// - 多张：同样递归调用自身，每次 delta 减一张，直到跨越完成
-    /// - 全程 isChaining=true，防止手势打断
-    private func commitSwitch(delta: Int) {
-        let actual = max(-currentIdx, min(totalCardCount - 1 - currentIdx, delta))
-        guard actual != 0 else {
-            withAnimation(Motion.respect(Motion.smooth)) { dragOffsetX = 0 }
-            isChaining = false
+    /// 关键不变量：`effective = realIdx - currentIdx - dragProgress`（dragProgress = -trackOffset/L）
+    ///
+    /// 数学：让 currentIdx 与 trackOffset 同时被同一个 spring 驱动。
+    ///   起始：(currentIdx=c, trackOffset=W) → effective = realIdx - c - (-W/L) = realIdx - c + W/L
+    ///   目标：(currentIdx=c+Δ, trackOffset=0) → effective = realIdx - c - Δ
+    ///   起止 effective 差 = -Δ - W/L = -(Δ·L + W) / L = -(目标距离/L)
+    ///   spring 在 [0,1] 内插值时，effective 也在起止之间线性插值 → 屏幕上每张卡的几何属性
+    ///   从起始连续平滑变到目标。**所有卡片（包括正在离开和正在进入中央的）都参与同一组动画**。
+    ///
+    /// 注意：currentIdx 是 Int，必须放在 `withAnimation` 内部以变化才会触发隐式过渡。
+    /// SwiftUI 的隐式动画会把 Int 视作离散，但 `effective` 是 `realIdx - currentIdx - drag` 的合成
+    /// 值，每帧由 dragProgress 计算插入；只要 trackOffset 是连续的，effective 就连续。
+    /// 这里 currentIdx 在动画块内被赋新值是为了让"动画完成时几何已收敛到目标"的状态正确，
+    /// 而中间过程的视觉连续性由 trackOffset spring 提供。
+    ///
+    /// **关键技巧**：先把 trackOffset 补偿到等价位置（不动画），再让 currentIdx 与 trackOffset
+    /// 同时朝目标 spring。补偿的瞬时不会引发视觉变化（因为 effective 守恒），spring 阶段
+    /// effective 平滑收敛到目标，整个过程零跳变。
+    private func settle(to targetIdx: Int) {
+        let delta = targetIdx - currentIdx
+        if delta == 0 {
+            withAnimation(Motion.respect(.spring(response: 0.34, dampingFraction: 0.86))) {
+                trackOffset = 0
+            }
+            panBaseline = 0
             return
         }
 
-        // 进入分步阶段：上锁
-        isChaining = true
-        let sign = actual > 0 ? 1 : -1
-        let stepAnim: Animation = .spring(response: Self.flipDuration, dampingFraction: 0.86)
-        let phase1Target = -CGFloat(sign) * Self.switchLimit
-
-        // 阶段 1：spring 推 dragOffsetX 从当前值 → -sign·switchLimit
-        // （手势末 dragOffsetX 可能已经接近这个值，spring 会自适应缩短路程）
-        withAnimation(Motion.respect(stepAnim)) {
-            dragOffsetX = phase1Target
+        // 阶段 1（无动画，瞬时）：把 currentIdx 推到目标，trackOffset 同步补偿。
+        // 不变量 effective = realIdx - currentIdx - dragProgress 守恒 → 屏幕上无任何视觉变化。
+        // ForEach.id 是 realIdx（不是 currentIdx），所以 currentIdx 跳变不会引起 view identity 变更。
+        var tx = Transaction()
+        tx.disablesAnimations = true
+        withTransaction(tx) {
+            currentIdx = targetIdx
+            trackOffset += CGFloat(delta) * Self.switchLimit
         }
+        // 阶段 2（spring）：trackOffset → 0，dragProgress 同步收敛到 0，
+        // effective 在每张可见卡上从"补偿后位置"平滑过渡到"目标位置"，全程无跳变。
+        withAnimation(Motion.respect(.spring(response: 0.42, dampingFraction: 0.86))) {
+            trackOffset = 0
+        }
+        panBaseline = 0
+    }
 
-        // 阶段 2：动画结束后原子提交本张，有剩余则递归翻下一张
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.flipDuration + 0.02) {
-            var tx = Transaction()
-            tx.disablesAnimations = true
-            withTransaction(tx) {
-                self.currentIdx = max(0, min(self.totalCardCount - 1, self.currentIdx + sign))
-                self.dragOffsetX = 0
-            }
-            // 递归翻下一张（剩余 = actual - sign）
-            let remaining = actual - sign
-            if remaining != 0 {
-                self.commitSwitch(delta: remaining)
+    /// 真实卡片身份制渲染：每张卡按其真实索引 realIdx 渲染，
+    /// 几何属性由连续函数 `effectiveSlot = realIdx - currentIdx - dragProgress` 决定。
+    ///
+    /// 数学不变量（保证 settle 不视觉跳变）：
+    ///   settle 前：(currentIdx, dragProgress=p)，effectiveSlot = realIdx - currentIdx - p
+    ///   settle 后：(currentIdx+Δ, dragProgress=p-Δ)，effectiveSlot = realIdx - (currentIdx+Δ) - (p-Δ)
+    ///                                              = realIdx - currentIdx - p（完全相同）
+    ///   → SwiftUI 看到这张卡的所有几何属性都没变，无任何过渡 / 重新渲染 → 0 跳变。
+    @ViewBuilder
+    private func realCardView(realIdx: Int, drag: CGFloat,
+                              cardW: CGFloat, cardH: CGFloat) -> some View {
+        let effective = CGFloat(realIdx - currentIdx) - drag
+        let absEff = abs(effective)
+
+        // 远端卡（|effective| > 3.5）几乎不可见：fade≈0，跳过完整渲染节省 GPU
+        if absEff > 3.5 {
+            EmptyView()
+        } else {
+            let lowerIdx = min(Int(floor(absEff)), Self.maxAbsSlot)
+            let upperIdx = min(lowerIdx + 1, Self.maxAbsSlot)
+            let t = max(0, min(1, absEff - CGFloat(lowerIdx)))
+            let lower = Self.slotTable[lowerIdx]
+            let upper = Self.slotTable[upperIdx]
+
+            let fadeT = Self.fadeEase(t)
+            let baseScale = lower.scale + (upper.scale - lower.scale) * fadeT
+            let fade  = lower.fadeOpacity + (upper.fadeOpacity - lower.fadeOpacity) * Double(fadeT)
+
+            // 拖拽强调：滑动时让"浮在最上层的卡片"额外放大一点（最大 +5%）。
+            // boost = boostMax · |drag| · max(0, 1 - |effective|)
+            //   · |drag|=0 → 静止时 boost=0，不影响默认形态
+            //   · |effective| 越小（越靠近最前） → boost 越大
+            //   · |effective|≥1 → boost=0，邻卡及更远卡不参与放大
+            // 性质：boost 仍是 |effective| 的（弱）单调递减函数，不破坏"z 与 scale 同序"不变量。
+            let scale = baseScale * (1 + Self.boostFactor(absEff: absEff, drag: drag))
+
+            if fade < 0.01 {
+                EmptyView()
             } else {
-                self.isChaining = false
+                buildRealCard(realIdx: realIdx,
+                              cardW: cardW, cardH: cardH,
+                              drag: drag,
+                              effective: effective,
+                              absEff: absEff,
+                              scale: scale,
+                              fade: fade,
+                              lower: lower,
+                              upper: upper,
+                              t: t)
             }
         }
     }
 
-    /// 从 slot 预计算几何 → 生成单张卡视图（紧凑堆叠 + 渐变切换）。
-    ///
-    /// 数学模型（方案 B：连续 effective slot 驱动）：
-    ///   - effectiveSlot = slotOffset - dragProgress（拖拽视为整组虚拟向反方向滑了 |drag| 格）
-    ///   - 形态属性（scale / opacity / shadow / offsetBase）全部按 effective slot 在 slotTable 相邻档插值
-    ///     → 中央卡（slot=0）拖到 progress=±1 时，effective=±1，形态变为 abs=1 档（变小变淡）
-    ///     → 相邻卡（slot=±1，与拖拽方向相反那张）effective=0，变为中央档（变大变实）
-    ///     → 这就是"A 缩小淡出 + B 放大淡入"的渐进过渡
-    ///   - 位移 x = dir × offsetMag（完全由 effective slot 的 offsetBase 插值决定）
-    ///     ⚠️ 不再叠加 `dragOffsetX × 系数` 这种额外项 —— 否则两阶段提交时会瞬变。
-    ///   - 切换提交：commitSwitch 用 spring 把 dragOffsetX 推到 ±switchLimit 让 effective 走到目标几何，
-    ///     动画完成回调中无动画地 `currentIdx += delta` + `dragOffsetX = 0`，此时每张卡的
-    ///     (slotOffset, dragProgress) 同步突变但 effective 数值不变 → SwiftUI 不会重新插值任何属性。
+    /// 完成单张可见卡的几何插值 + zIndex 计算 + 视图组装。
     @ViewBuilder
-    private func slotCardView(slot: (slotOffset: Int, cardIdx: Int),
-                              cardW: CGFloat, cardH: CGFloat) -> some View {
-        let drag = dragProgress
-        // 连续 effective slot：每张卡的当前"虚拟槽位"。
-        // 静态：等于 slotOffset；拖拽时整组虚拟向反向滑 |drag| 格 → 形态/位移连续过渡。
-        let effective = CGFloat(slot.slotOffset) - drag
-
-        // 形态属性按 effective slot 在相邻档插值
-        let absEff = abs(effective)
-        let lowerIdx = min(Int(floor(absEff)), Self.maxAbsSlot)
-        let upperIdx = min(lowerIdx + 1, Self.maxAbsSlot)
-        let t = max(0, min(1, absEff - CGFloat(lowerIdx)))
-        let lower = Self.slotTable[lowerIdx]
-        let upper = Self.slotTable[upperIdx]
-
-        // scale 与 fade 共用同一条 2 阶 smoothstep 曲线：两端钝化、中段陡变
-        // → 中央卡"渐进消失（慢慢变小）"：drag 前半程几乎仍是 1.0，后半程才明显缩小
-        // → 邻卡"渐进浮现（慢慢变大）"：drag 前半程几乎仍是 0.94，后半程才明显放大
-        // 与 fade/zIndex 节奏完全一致，避免"位置先变、形态后变"的脱节感。
-        let fadeT = Self.fadeEase(t)
-        let scale = lower.scale + (upper.scale - lower.scale) * fadeT
-        let fade  = lower.fadeOpacity + (upper.fadeOpacity - lower.fadeOpacity) * Double(fadeT)
+    private func buildRealCard(realIdx: Int,
+                               cardW: CGFloat, cardH: CGFloat,
+                               drag: CGFloat,
+                               effective: CGFloat,
+                               absEff: CGFloat,
+                               scale: CGFloat,
+                               fade: Double,
+                               lower: SlotGeometry,
+                               upper: SlotGeometry,
+                               t: CGFloat) -> some View {
         let offsetMag = lower.offsetBase + (upper.offsetBase - lower.offsetBase) * t
         let shadowR  = lower.shadowRadius + (upper.shadowRadius - lower.shadowRadius) * t
         let shadowOp = lower.shadowOpacity + (upper.shadowOpacity - lower.shadowOpacity) * Double(t)
@@ -629,79 +626,45 @@ struct StatsHubView: View {
 
         // 方向：effective 的符号决定卡片在中央哪一侧
         let dir: CGFloat = effective >= 0 ? 1 : -1
-        // 位移 = effective slot 在 slotTable 中的插值后 offset
-        // ⚠️ 这里不再叠加 dragOffsetX × 0.18 这种额外项：
-        //    旧公式在 commitSwitch 提交瞬间会有 18pt 的离散跳变（dragOffsetX 从 ±100 → 0）。
-        //    方案 B 让"跟手暗示"完全由 effective slot 的 offsetBase 连续插值表达，
-        //    阶段 1 末与阶段 2 后每张卡的几何完全一致 → 全程无瞬变。
         let x = dir * offsetMag
 
-        // zIndex：连续插值的层级交接（消除"突然跳到最上层"的离散跳变）
-        //
-        // 旧实现用 2/3 硬阈值：drag 跨过该点瞬间，目标邻卡 z 从 ~93 跳到 105（差 12 单位），
-        // 视觉上就是"啪"地一下盖到最上层 → 这才是用户感受到的"卡片跳出式切换"根因。
-        //
-        // 新实现：用 fadeEase(|drag|) 重映射的进度让中央卡自然降级、目标邻卡自然加冕，
-        // 两条曲线在中段自然交叉，SwiftUI 直接按 z 排序，全程无任何阶跃。
-        //   · 中央卡（slot=0）：z = 100 - 10·ease   （drag=0 → 100，drag=±1 → 90）
-        //   · 目标邻卡（abs=1 且与 drag 同号）：z = 95 + 10·ease （drag=0 → 95，drag=±1 → 105）
-        //   · 反向邻卡 / 远卡：保持距中央递减分布，不参与交接
-        // 用 fadeEase 而非线性，是为了与 scale/fade 同节奏：前半程交接慢、后半程才明显接管。
-        //
-        // ⚠️ ViewBuilder 函数体顶层不能 if + 赋值，统一用三元表达式输出 z。
-        let dragMag = abs(drag)
-        let dragEase = Self.fadeEase(dragMag)
-        // drag 必须有真实方向（>1e-6）才认为存在"目标邻卡"——否则静止状态下 +0 的 sign=.plus
-        // 会让 slot=+1 被误判为 target，引发 C2 mask 下左右邻卡可见性不对称。
-        let hasDirection = dragMag > 1e-6
-        let isTargetNeighbor = hasDirection
-            && abs(slot.slotOffset) == 1
-            && (CGFloat(slot.slotOffset).sign == drag.sign)
-        // 注意：@ViewBuilder 函数体顶层禁用 if + 赋值（会被当成 View 分支返回 ()），统一用三目表达式
-        let z: Double = slot.slotOffset == 0
-            ? 100 - 10 * Double(dragEase)
-            : (isTargetNeighbor
-                ? 95 + 10 * Double(dragEase)
-                : 100 - Double(absEff) * 10)
+        // zIndex：单一规则——与 |effective| 严格同序，scale 最大的卡 z 也最大。
+        // 不再按"概念槽位 + drag"分支决策，避免任何拖拽中期的"小卡盖大卡"。
+        let zFinal: Double = CardSwipeEngine.zIndex(forAbsEffective: absEff)
 
-        let isCenter = slot.slotOffset == 0
+        let isCenter = absEff < 0.5
 
-        cardView(allCards[slot.cardIdx], isCenter: isCenter)
+        cardView(allCards[realIdx], isCenter: isCenter)
             .frame(width: cardW, height: cardH)
             .scaleEffect(scale)
             .opacity(fade)
             .offset(x: x, y: 0)
             .shadow(color: Color.black.opacity(shadowOp),
                     radius: shadowR, y: shadowY)
-            .zIndex(z)
+            .zIndex(zFinal)
             .allowsHitTesting(false)
     }
 
     /// 容器 tap 派发：
-    /// - 只有"最上层卡片"（中央卡，slotOffset = 0）的矩形区域响应跳转
-    /// - 侧边区域 tap 视为"归位到那个方向"的单步切换（不跳转），
-    ///   这样下次再点击已成为中央卡的详情，保持"最上层卡片任意位置跳详情"的可发现性
+    /// - 中央卡矩形内 tap → 跳转详情
+    /// - 侧边区域 tap → 归位到那一侧的最近卡（不跳转），与 pan 共用 settle
     private func handleContainerTap(location: CGPoint,
                                     containerSize: CGSize,
                                     cardW: CGFloat,
                                     cardH: CGFloat) {
-        // 以容器中心为原点（catcher 本身水平铺满屏幕，中心 = 屏宽/2）
         let dx = location.x - containerSize.width / 2
         let dy = location.y - containerSize.height / 2
-        // 中央卡实际可视矩形：宽 cardW, 高 cardH（scale=1.0, offset=0）
         let inCenterCard = abs(dx) <= cardW / 2 && abs(dy) <= cardH / 2
         if inCenterCard {
             navPath.append(allCards[currentIdx].id)
         } else {
-            // 侧边 → 归位一张（与 pan 切换共用 commitSwitch，保证两类切换的视觉曲线完全一致）
-            let delta = dx > 0 ? 1 : -1
-            let target = currentIdx + delta
+            let step = dx > 0 ? 1 : -1
+            let target = currentIdx + step
             guard target >= 0 && target < totalCardCount else {
-                // 已是边界，不归位，给与拖拽相同的提示
-                showEdgeHint(delta > 0 ? "已是最后一张" : "已是第一张")
+                showEdgeHint(step > 0 ? "已是最后一张" : "已是第一张")
                 return
             }
-            commitSwitch(delta: delta)
+            settle(to: target)
         }
     }
 
@@ -712,7 +675,10 @@ struct StatsHubView: View {
         // 所有卡：整体内容垂直+水平居中于卡片中央；
         // 文本/数字做 lineLimit + minimumScaleFactor 防溢出；
         // 外层 clipShape 保证任何子视图不会突破圆角。
-        let preview = previewContent(for: card)
+        //
+        // 性能：preview 数据已下沉到 StatsViewModel.cardPreviews，只在 reload 时一次性计算；
+        // 拖拽期间 cardView 可能被重建多次，这里仅是 O(1) 字典查表 + 默认值兑底。
+        let preview = vm.cardPreviews[card.id] ?? StatsCardPreview(heroValue: "—", insight: "加载中")
 
         VStack(spacing: NotionTheme.space4) {
             // 顶部：icon 小块 + 标题
@@ -772,107 +738,18 @@ struct StatsHubView: View {
                      lgaShadow: false)
         // 关键：裁剪所有子视图到卡片圆角矩形内，防止大数字/长文本突破边界
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        // Metal 离屏合成：把整张卡"栅格化"，scale/offset 变化时 GPU 直接搬运像素
-        // 不再触发 SwiftUI 重新布局子视图，滚动帧率从 ~40fps → 60fps
-        .compositingGroup()
+        // 性能：原本的 .compositingGroup() 已移除。
+        // 原因：slotCardView 外层已有 .shadow()，.shadow 本身就会触发离屏渲染；
+        // 再叠加 compositingGroup 会让 GPU 每帧双重离屏、改变 alpha 时还要重新计算阴影模糊，
+        // 反而拖累帧率。去掉后 GPU 只走一次 shadow 离屏，9 张卡拖拽时负担显著降低。
     }
 
-    // MARK: - 卡片预览数据（hero / insight）
-
-    private struct CardPreview { let heroValue: String; let insight: String }
-
-    private func previewContent(for card: HubCard) -> CardPreview {
-        switch card.id {
-        case .trend:
-            let avg = vm.dailyTrend30.isEmpty ? 0 :
-                vm.dailyTrend30.map(\.expense).reduce(Decimal(0), +) / Decimal(vm.dailyTrend30.count)
-            return CardPreview(
-                heroValue: "¥" + StatsFormat.compactK(avg),
-                insight: "近 30 天日均支出"
-            )
-        case .sankey:
-            return CardPreview(
-                heroValue: "¥\(StatsFormat.compactK(vm.monthlyIncome)) → ¥\(StatsFormat.compactK(vm.monthlyExpense))",
-                insight: vm.expenseCategorySlices.first.map { "\($0.name)占 \(Int($0.percentage * 100))%" }
-                    ?? "查看资金流向"
-            )
-        case .wordcloud:
-            let top = vm.expenseCategorySlices.first?.name ?? "—"
-            return CardPreview(heroValue: top, insight: "本月最大支出分类")
-        case .budget:
-            let cur = vm.monthlyExpense
-            let target = vm.prevMonthExpense > 0
-                ? vm.prevMonthExpense * Decimal(string: "1.1")! : cur
-            let pct = target > 0
-                ? (cur as NSDecimalNumber).doubleValue / (target as NSDecimalNumber).doubleValue * 100
-                : 0
-            return CardPreview(
-                heroValue: String(format: "%.0f%%", pct),
-                insight: cur > target ? "本月已超出估算预算" : "预算执行良好"
-            )
-        case .main:
-            // 本月统计：净增（收入 - 支出）+ 收支笔数
-            let net = vm.monthlyIncome - vm.monthlyExpense
-            let sign = net >= 0 ? "+" : "-"
-            let absNet = net >= 0 ? net : -net
-            let cal = Calendar.current
-            let now = Date()
-            let monthRecords = vm.allRecords.filter {
-                cal.isDate($0.occurredAt, equalTo: now, toGranularity: .month)
-            }
-            let incomeCount = monthRecords.filter {
-                (vm.categoriesById[$0.categoryId]?.kind ?? .expense) == .income
-            }.count
-            let expenseCount = monthRecords.filter {
-                (vm.categoriesById[$0.categoryId]?.kind ?? .expense) == .expense
-            }.count
-            return CardPreview(
-                heroValue: sign + "¥" + StatsFormat.compactK(absNet),
-                insight: "收 \(incomeCount) 笔 · 支 \(expenseCount) 笔"
-            )
-        case .aa:
-            let aaCount = vm.allRecords.filter { ($0.participants?.count ?? 0) > 0 }.count
-            return CardPreview(
-                heroValue: aaCount > 0 ? "\(aaCount) 笔" : "—",
-                insight: aaCount > 0 ? "本月共享账单笔数" : "等待启用 AA"
-            )
-        case .category:
-            let top = vm.expenseCategorySlices.first
-            return CardPreview(
-                heroValue: top.map { "¥" + StatsFormat.decimalGrouped($0.amount) } ?? "—",
-                insight: top.map { "\($0.name) · \($0.count) 笔" } ?? "暂无支出"
-            )
-        case .year:
-            let total = vm.last12Months.map(\.expense).reduce(Decimal(0), +)
-            return CardPreview(
-                heroValue: "¥" + StatsFormat.compactK(total),
-                insight: "近 12 月累计支出"
-            )
-        case .hourly:
-            let peak = vm.hourlyDistribution.max(by: { $0.amount < $1.amount })
-            return CardPreview(
-                heroValue: peak.map { String(format: "%02d:00", $0.hour) } ?? "—",
-                insight: peak.map { "高峰时段 · ¥" + StatsFormat.decimalGrouped($0.amount) } ?? "暂无数据"
-            )
-        case .summary:
-            // 同步轻查询：取 listAll 第一条作为最新一次复盘的预览
-            // listAll 走 SQLite 单行索引扫描，DB ready 时几毫秒，view 重渲不会成为瓶颈
-            let latest = (try? SQLiteBillsSummaryRepository.shared.listAll(includesDeleted: false))?.first
-            if let s = latest {
-                let kindLabel: String = {
-                    switch s.periodKind {
-                    case .week:  return "周报"
-                    case .month: return "月报"
-                    case .year:  return "年报"
-                    }
-                }()
-                let digest = s.summaryDigest.isEmpty ? "查看完整 AI 复盘" : s.summaryDigest
-                return CardPreview(heroValue: kindLabel, insight: digest)
-            } else {
-                return CardPreview(heroValue: "—", insight: "暂无复盘 · 点击查看历史")
-            }
-        }
-    }
+    // MARK: - 卡片预览数据（已下沉到 StatsViewModel.cardPreviews）
+    //
+    // 历史上这里是 private func previewContent(for:) + 内部 CardPreview，
+    // 每帧重渲都会重算（其中 .summary 还含 SQLite 查询，.main/.aa 含全量数组遍历）。
+    // 拖拽时 17+ 张卡 × 60fps → 每秒上千次 SQL 查询 / 数组遍历，是卡顿主因。
+    // 现以 reload 时一次性计算 vm.cardPreviews 字典代替，View 层只读。
 
     // MARK: - 页面指示 + 提示
 
@@ -943,12 +820,13 @@ typealias StatsPlaceholderView = StatsHubView
 //   - 水平意图判定：|dx| > |dy| * 1.2 && |dx| > 10；否则立即 fail 让 TabView 接管
 //   - tap 单独出口：移动距离 < 10pt 视为 tap，命中坐标回调
 struct HorizontalPanCatcher: UIViewRepresentable {
+    let onStart:   () -> Void                            // 手势开始（.began）
     let onChanged: (CGFloat) -> Void                      // 累计水平位移
     let onEnded:   (CGFloat, CGFloat) -> Void             // 位移 + 速度 (pts/s)
     let onTap:     (CGPoint, CGSize) -> Void              // tap 坐标 + 容器尺寸（用于 slot 判定）
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onChanged: onChanged, onEnded: onEnded, onTap: onTap)
+        Coordinator(onStart: onStart, onChanged: onChanged, onEnded: onEnded, onTap: onTap)
     }
 
     func makeUIView(context: Context) -> UIView {
@@ -975,6 +853,7 @@ struct HorizontalPanCatcher: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.onStart = onStart
         context.coordinator.onChanged = onChanged
         context.coordinator.onEnded = onEnded
         context.coordinator.onTap = onTap
@@ -983,14 +862,17 @@ struct HorizontalPanCatcher: UIViewRepresentable {
     // MARK: - Coordinator
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onStart:   () -> Void
         var onChanged: (CGFloat) -> Void
         var onEnded:   (CGFloat, CGFloat) -> Void
         var onTap:     (CGPoint, CGSize) -> Void
         weak var hostView: UIView?
 
-        init(onChanged: @escaping (CGFloat) -> Void,
+        init(onStart: @escaping () -> Void,
+             onChanged: @escaping (CGFloat) -> Void,
              onEnded: @escaping (CGFloat, CGFloat) -> Void,
              onTap: @escaping (CGPoint, CGSize) -> Void) {
+            self.onStart = onStart
             self.onChanged = onChanged
             self.onEnded = onEnded
             self.onTap = onTap
@@ -1000,7 +882,10 @@ struct HorizontalPanCatcher: UIViewRepresentable {
             guard let v = hostView else { return }
             let t = gr.translation(in: v)
             switch gr.state {
-            case .began, .changed:
+            case .began:
+                onStart()
+                onChanged(t.x)  // .began 也走一次 changed，给 trackOffset 外照以 dx=0 的初值
+            case .changed:
                 onChanged(t.x)
             case .ended, .cancelled, .failed:
                 let vx = gr.velocity(in: v).x
@@ -1204,6 +1089,187 @@ struct StatsMonthPickerSheet: View {
         }
         .background(Color.appCanvas)
     }
+}
+
+// MARK: - CardSwipeEngine（卡片滑动手势 / 物理引擎，纯逻辑）
+//
+// 抽离 StatsHubView 的滑动数学：trackOffset 跟手 + dragProgress 归一化 + 松手吸附。
+// 目的：让单元测试能够对核心算法做白盒覆盖，不被 SwiftUI 动画 / UIKit 手势工厂阻断。
+// 无任何 UI / Animation 依赖；只持有数值状态 + 边界配置 + 几个 mutating 函数。
+
+/// 卡片滑动引擎：iOS 控制中心式"trackOffset 跟手 + 单 spring 吸附"模型。
+///
+/// 模型不变量：
+///   · `dragProgress = -trackOffset / switchLimit`（手指向左拖→progress>0→看下一张）
+///   · 静止时 `trackOffset == 0`，`dragProgress == 0`
+///   · 切换前后 `currentIdx + dragProgress == 用户视觉感知到的卡片位置` 守恒
+///   · `dragProgress` 始终被夹在 `[-currentIdx, totalCount-1-currentIdx]`，
+///     越界手势由 `onPanChanged` 的橡皮筋阻尼处理
+///
+/// 线程：所有方法都在主线程调用（与 SwiftUI View 状态绑定一致），不做并发保护。
+struct CardSwipeEngine: Equatable {
+
+    // MARK: - 配置
+
+    /// 一张卡距离，trackOffset 累计 switchLimit pt = 已切换 1 张
+    static let switchLimit: CGFloat = 100
+    /// 速度惯性时长（秒），松手时用 vx · inertiaTime 估算还会再"飞"多远
+    static let inertiaTime: CGFloat = 0.18
+    /// 单次手势最多跨越的卡片数（绝对上限）
+    static let maxJump: Int = 12
+    /// 边界橡皮筋阻尼系数
+    static let rubberFactor: CGFloat = 0.28
+    /// 边界橡皮筋最大位移
+    static let rubberLimit: CGFloat = 70
+
+    // MARK: - 状态
+
+    /// 当前居中卡的真实下标
+    private(set) var currentIdx: Int
+    /// 跟手位移（手势/动画驱动；静止时为 0）
+    var trackOffset: CGFloat = 0
+    /// 卡片总数（≥1）
+    let totalCount: Int
+    /// 手势开始时的 trackOffset 快照（onPanStarted 设置）。
+    /// 让 onPanChanged(dx) 能把 dx 理解为"相对手势起点的累计位移"而不是绝对 trackOffset；
+    /// 这个字段是修复 H1/H2 “spring 进行中发起新手势跳变”的关键。
+    private var panBaseline: CGFloat = 0
+
+    // MARK: - 派生
+
+    /// 当前拖拽进度（已切换张数维度，可跨越多张）。被边界 clamp 保证不越界。
+    var dragProgress: CGFloat {
+        let raw = -trackOffset / Self.switchLimit
+        let forwardRoom = CGFloat(totalCount - 1 - currentIdx)
+        let backwardRoom = CGFloat(currentIdx)
+        return max(-backwardRoom, min(forwardRoom, raw))
+    }
+
+    /// 是否处于左边界（首张）
+    var atLeftEdge: Bool { currentIdx == 0 }
+    /// 是否处于右边界（末张）
+    var atRightEdge: Bool { currentIdx == totalCount - 1 }
+
+    /// 当前用户视觉感知到的"虚拟卡片位置"（实数）= currentIdx + dragProgress。
+    /// applyEquivalentSwitch 的不变量：执行前后此值守恒（settle 不视觉跳变的数学基础）。
+    var viewProgress: CGFloat {
+        CGFloat(currentIdx) + dragProgress
+    }
+
+    // MARK: - Init
+
+    init(totalCount: Int, initialIdx: Int = 0) {
+        precondition(totalCount > 0, "totalCount 必须 ≥ 1")
+        self.totalCount = totalCount
+        self.currentIdx = max(0, min(totalCount - 1, initialIdx))
+    }
+
+    // MARK: - 手势事件
+
+    /// pan started：记录当前 trackOffset 为跟手基线。
+    /// 上一轮 settle 的 spring 可能还在进行中（trackOffset 非零），记走这个值
+    /// 后续 onPanChanged(dx) 会以它为起点累加。
+    /// 如果手势开始时刚好静止，panBaseline=0，行为与原来一致。
+    mutating func onPanStarted() {
+        panBaseline = trackOffset
+    }
+
+    /// pan changed：trackOffset = panBaseline + dx（从手势起点的累计位移）；越界橡皮筋。
+    mutating func onPanChanged(dx: CGFloat) {
+        let raw = panBaseline + dx
+        // 越界判定仍看当前手势意图（raw 的符号）而非原始 dx，避免跟手起点偏移后边界检查错位
+        let outward = (raw > 0 && atLeftEdge) || (raw < 0 && atRightEdge)
+        if outward {
+            let sign: CGFloat = raw > 0 ? 1 : -1
+            trackOffset = sign * min(abs(raw) * Self.rubberFactor, Self.rubberLimit)
+        } else {
+            trackOffset = raw
+        }
+    }
+
+    /// pan ended：根据当前位置 + 速度惯性预测最终落点。
+    /// - Returns: `SettleDecision`，调用方负责动画提交。
+    func onPanEnded(vx: CGFloat) -> SettleDecision {
+        let currentProgress = dragProgress
+        let inertiaProgress = -vx * Self.inertiaTime / Self.switchLimit
+        let predicted = currentProgress + inertiaProgress
+
+        var delta = Int(predicted.rounded())
+        if delta > Self.maxJump { delta = Self.maxJump }
+        if delta < -Self.maxJump { delta = -Self.maxJump }
+
+        let target = max(0, min(totalCount - 1, currentIdx + delta))
+        delta = target - currentIdx
+
+        var hint: EdgeHint? = nil
+        if delta == 0 {
+            if predicted > 0.5 && atRightEdge {
+                hint = .rightEdge
+            } else if predicted < -0.5 && atLeftEdge {
+                hint = .leftEdge
+            }
+        }
+
+        return SettleDecision(targetIdx: target, predictedProgress: predicted, hint: hint)
+    }
+
+    /// settle 阶段 1（无动画）：currentIdx 立即跳到 target，trackOffset 同步补偿。
+    /// 调用方紧接着用 spring 把 trackOffset 收敛到 0 即可。
+    /// 不变量：执行前后 viewProgress 守恒（settle 不视觉跳变的数学基础）。
+    /// 还会顺带重置 panBaseline（settle 后不会被新手势以上一轮 baseline 累加）。
+    mutating func applyEquivalentSwitch(to targetIdx: Int) {
+        let clamped = max(0, min(totalCount - 1, targetIdx))
+        let delta = clamped - currentIdx
+        guard delta != 0 else { return }
+        currentIdx = clamped
+        trackOffset += CGFloat(delta) * Self.switchLimit
+        // 重置 baseline：下次 onPanStarted 会重记 baseline，但果错调用顺序下（未 onPanStarted 直接 onPanChanged）
+        // 也不应使用上一轮 settle 前的 baseline。
+        panBaseline = 0
+    }
+
+    /// 测试 / View 复原状态专用：读取与写入 panBaseline。
+    /// engine 是值类型，每次构造都会丢失 panBaseline；View 层需要能将上一帧的 baseline 复原进来。
+    var panBaselineForTest: CGFloat { panBaseline }
+    mutating func restorePanBaseline(_ value: CGFloat) { panBaseline = value }
+
+    // MARK: - zIndex 策略（静态，View 与测试共用）
+
+    /// 2 阶 smoothstep。与 StatsHubView.fadeEase 一致。
+    static func fadeEase(_ x: CGFloat) -> CGFloat {
+        let c = max(0, min(1, x))
+        return c * c * c * (c * (c * 6 - 15) + 10)
+    }
+
+    /// 计算一张卡的 zIndex，**单一规则**：z 与 |effective| 严格单调递减。
+    ///
+    /// 设计原则（用户明确反馈的目标）：
+    ///   "不管哪一帧，浮在最上层的卡片一定是最大的那个"
+    ///   即 z 与 scale 必须**任意时刻同序**。scale 是 |effective| 的连续单调递减函数，
+    ///   故 z 也必须是 |effective| 的单调递减函数。任何离散槽位 / drag 触发的"交接"
+    ///   都会破坏这个不变量，导致用户感知到"小卡盖住大卡"。
+    ///
+    /// 几何含义：|effective|=0（中央卡）z=100；|effective|=3（最远可见卡）z=70；
+    /// |effective|>3.5 的卡 fade<0.01 已被早返回，不进入 z 计算。
+    static func zIndex(forAbsEffective absEff: CGFloat) -> Double {
+        100.0 - Double(absEff) * 10.0
+    }
+}
+
+/// 松手后的"该去哪张"决策结果（调用方负责动画执行）。
+struct SettleDecision: Equatable {
+    /// 最终落点 idx（已 clamp 在 [0, totalCount-1]）
+    let targetIdx: Int
+    /// 算法预测到的"理论 progress 落点"（未 round / 未 clamp，含越界值）
+    let predictedProgress: CGFloat
+    /// 是否需要给出边界 toast 提示
+    let hint: EdgeHint?
+}
+
+/// 边界越界提示种类
+enum EdgeHint: Equatable {
+    case leftEdge   // 已是第一张
+    case rightEdge  // 已是最后一张
 }
 
 #if DEBUG

@@ -66,6 +66,13 @@ struct StatsKeyword: Identifiable, Equatable {
     let categoryColor: NotionColor   // 关联最频繁出现的分类色
 }
 
+/// StatsHubView 卡片预览数据（hero 大数字 + 副标说明）。
+/// 由 ViewModel 在 reload 末尾一次性算好，View 层只读，避免每帧重算。
+struct StatsCardPreview: Equatable {
+    let heroValue: String
+    let insight: String
+}
+
 // MARK: - ViewModel
 
 @MainActor
@@ -117,6 +124,11 @@ final class StatsViewModel: ObservableObject {
     // ----- 派生：备注词频（本月） -----
     @Published private(set) var keywords: [StatsKeyword] = []
 
+    // ----- 派生：StatsHub 卡片预览（一次性算好，View 只读） -----
+    /// 各卡片的 hero/insight 数据。reload 末尾一次性计算；
+    /// View 拖拽期间直接查表，无任何 SQLite 查询 / 数组遍历。
+    @Published private(set) var cardPreviews: [StatsAnalysisDestination: StatsCardPreview] = [:]
+
     // ----- 状态：是否有真实数据。无数据 → 各分析页显示空态；有但稀疏（< 3 条）的子图标 [示例]。-----
     @Published private(set) var hasAnyData: Bool = false
 
@@ -162,6 +174,9 @@ final class StatsViewModel: ObservableObject {
             hasAnyData = !records.isEmpty
 
             recompute()
+            // 3) 一次性计算 StatsHub 卡片预览
+            //    放在 recompute 之后：依赖 monthlyIncome/expenseCategorySlices 等派生字段
+            recomputeCardPreviews()
             loadError = nil
         } catch {
             loadError = error.localizedDescription
@@ -349,6 +364,137 @@ final class StatsViewModel: ObservableObject {
             let s = byDay[d] ?? (0, 0)
             return StatsDailyPoint(id: offset, date: d, income: s.i, expense: s.e)
         }
+    }
+
+    // MARK: - StatsHub 卡片预览计算
+
+    /// 一次性算好所有 10 张卡的 hero/insight。
+    /// 性能要点：
+    ///   - 单次遍历 curRecords 同时统计 income/expense 笔数 + AA 笔数（替代原 View 层 3 次 filter）
+    ///   - SQLite listAll 仅在 reload 时调用一次（原实现每帧调一次，是最大瓶颈）
+    private func recomputeCardPreviews() {
+        let cal = Calendar.current
+        let curInterval = month.dateInterval(in: cal)
+
+        // —— 单遍统计：本月收入笔数 / 支出笔数 / AA 笔数（含 participants 的 record）——
+        var incomeCount = 0
+        var expenseCount = 0
+        var aaCount = 0
+        for r in allRecords where curInterval.contains(r.occurredAt) {
+            switch categoriesById[r.categoryId]?.kind ?? .expense {
+            case .income:  incomeCount += 1
+            case .expense: expenseCount += 1
+            }
+            if (r.participants?.count ?? 0) > 0 { aaCount += 1 }
+        }
+
+        var dict: [StatsAnalysisDestination: StatsCardPreview] = [:]
+
+        // trend：近 30 天日均支出
+        do {
+            let avg = dailyTrend30.isEmpty ? Decimal(0)
+                : dailyTrend30.map(\.expense).reduce(Decimal(0), +) / Decimal(dailyTrend30.count)
+            dict[.trend] = StatsCardPreview(
+                heroValue: "¥" + StatsFormat.compactK(avg),
+                insight: "近 30 天日均支出"
+            )
+        }
+
+        // sankey：收入 → 支出 + 头部分类占比
+        do {
+            let topInsight = expenseCategorySlices.first.map {
+                "\($0.name)占 \(Int($0.percentage * 100))%"
+            } ?? "查看资金流向"
+            dict[.sankey] = StatsCardPreview(
+                heroValue: "¥\(StatsFormat.compactK(monthlyIncome)) → ¥\(StatsFormat.compactK(monthlyExpense))",
+                insight: topInsight
+            )
+        }
+
+        // wordcloud：本月最大支出分类名
+        dict[.wordcloud] = StatsCardPreview(
+            heroValue: expenseCategorySlices.first?.name ?? "—",
+            insight: "本月最大支出分类"
+        )
+
+        // budget：本月支出 / 上月×1.1 估算预算
+        do {
+            let cur = monthlyExpense
+            let target = prevMonthExpense > 0
+                ? prevMonthExpense * Decimal(string: "1.1")!
+                : cur
+            let pct = target > 0
+                ? (cur as NSDecimalNumber).doubleValue / (target as NSDecimalNumber).doubleValue * 100
+                : 0
+            dict[.budget] = StatsCardPreview(
+                heroValue: String(format: "%.0f%%", pct),
+                insight: cur > target ? "本月已超出估算预算" : "预算执行良好"
+            )
+        }
+
+        // main：本月净增 + 收支笔数
+        do {
+            let net = monthlyIncome - monthlyExpense
+            let sign = net >= 0 ? "+" : "-"
+            let absNet = net >= 0 ? net : -net
+            dict[.main] = StatsCardPreview(
+                heroValue: sign + "¥" + StatsFormat.compactK(absNet),
+                insight: "收 \(incomeCount) 笔 · 支 \(expenseCount) 笔"
+            )
+        }
+
+        // aa：含 participants 的笔数
+        dict[.aa] = StatsCardPreview(
+            heroValue: aaCount > 0 ? "\(aaCount) 笔" : "—",
+            insight: aaCount > 0 ? "本月共享账单笔数" : "等待启用 AA"
+        )
+
+        // category：头部分类金额 + 名称
+        do {
+            let top = expenseCategorySlices.first
+            dict[.category] = StatsCardPreview(
+                heroValue: top.map { "¥" + StatsFormat.decimalGrouped($0.amount) } ?? "—",
+                insight: top.map { "\($0.name) · \($0.count) 笔" } ?? "暂无支出"
+            )
+        }
+
+        // year：近 12 月累计支出
+        do {
+            let total = last12Months.map(\.expense).reduce(Decimal(0), +)
+            dict[.year] = StatsCardPreview(
+                heroValue: "¥" + StatsFormat.compactK(total),
+                insight: "近 12 月累计支出"
+            )
+        }
+
+        // hourly：消费时段高峰
+        do {
+            let peak = hourlyDistribution.max(by: { $0.amount < $1.amount })
+            dict[.hourly] = StatsCardPreview(
+                heroValue: peak.map { String(format: "%02d:00", $0.hour) } ?? "—",
+                insight: peak.map { "高峰时段 · ¥" + StatsFormat.decimalGrouped($0.amount) } ?? "暂无数据"
+            )
+        }
+
+        // summary：最新一次 AI 复盘（reload 时单次 SQLite 查询；原实现是每帧一次）
+        do {
+            let latest = (try? SQLiteBillsSummaryRepository.shared.listAll(includesDeleted: false))?.first
+            if let s = latest {
+                let kindLabel: String = {
+                    switch s.periodKind {
+                    case .week:  return "周报"
+                    case .month: return "月报"
+                    case .year:  return "年报"
+                    }
+                }()
+                let digest = s.summaryDigest.isEmpty ? "查看完整 AI 复盘" : s.summaryDigest
+                dict[.summary] = StatsCardPreview(heroValue: kindLabel, insight: digest)
+            } else {
+                dict[.summary] = StatsCardPreview(heroValue: "—", insight: "暂无复盘 · 点击查看历史")
+            }
+        }
+
+        cardPreviews = dict
     }
 
     /// 备注词频：备注按空格 / 中文标点 / `,，。 ` 切，过滤短词；权重 = 出现次数。
