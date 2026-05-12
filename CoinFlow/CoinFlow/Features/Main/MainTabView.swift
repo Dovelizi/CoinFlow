@@ -79,6 +79,11 @@ struct MainTabView: View {
     /// 在 MainTabView 根层订阅可覆盖任意 tab，且不强制切换当前 tab。
     @StateObject private var screenshotInboxCoord = PhotoCaptureCoordinator()
 
+    /// 键盘弹起时是否已对 TabBar 施加隐藏请求（用于配对 push/pop，避免重复计数）。
+    /// 键盘 willShow → pushHide()；willHide → popHide()。
+    /// 这样所有一级 tab 在键盘弹起时都自动收起 TabBar，避免悬浮按钮气泡被键盘往上顶。
+    @State private var keyboardHidingTabBar: Bool = false
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ZStack {
@@ -96,7 +101,22 @@ struct MainTabView: View {
                 }
             }
             .id(selected)
-            .transition(.opacity)
+            // 横向滑入滑出过渡：模拟 “A 页面横向滑动到 B 页面” 的视觉。
+            // - 新 tab index 比旧的大（往右）→ 新页面从 .trailing 滑入，旧页面向 .leading 退出
+            // - 新 tab index 比旧的小（往左）→ 镜像
+            // lastDirectionReversed 在 switchTo() 中根据 AppTab.allCases 顺序计算。
+            //
+            // ⚠️ 不要在这里加 .clipped()：会按 layout frame 裁切，把页面内容裁出 safe area
+            // 之外，导致顶部状态栏 / 底部 home indicator 区域露出黑色根背景。
+            // 外层 ZStack 已限定在屏幕范围，transition.move 不会真的画到屏幕外。
+            .transition(
+                .asymmetric(
+                    insertion: .move(edge: lastDirectionReversed ? .leading : .trailing)
+                        .combined(with: .opacity),
+                    removal: .move(edge: lastDirectionReversed ? .trailing : .leading)
+                        .combined(with: .opacity)
+                )
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .environmentObject(tabBarVisibility)
             .animation(Motion.respect(Motion.smooth), value: selected)
@@ -115,6 +135,19 @@ struct MainTabView: View {
         // 任何 tab 下都能立即接收并触发 CaptureConfirmView 识别流程。
         .onReceive(ScreenshotInbox.shared.imageSubject) { image in
             Task { await screenshotInboxCoord.handle(image: image) }
+        }
+        // 键盘弹起 → 隐藏 TabBar；键盘收起 → 恢复。
+        // 走 TabBarVisibility 的 push/pop 引用计数 API，与二级页 .hideTabBar() 复用同一通道。
+        // 用 keyboardHidingTabBar 防止重复 push（系统在 sheet 切换时可能多次发 willShow）。
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            guard !keyboardHidingTabBar else { return }
+            keyboardHidingTabBar = true
+            tabBarVisibility.pushHide()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            guard keyboardHidingTabBar else { return }
+            keyboardHidingTabBar = false
+            tabBarVisibility.popHide()
         }
         .sheet(item: Binding(
             get: {
@@ -135,7 +168,9 @@ struct MainTabView: View {
         }
     }
 
-    /// 切 tab：cross-fade 过渡（与外层 .animation(Motion.smooth, value: selected) 联动）
+    /// 切 tab：横向滑入滑出过渡
+    /// - 根据 AppTab.allCases 顺序判断方向：新 index < 旧 index → reversed = true → 旧页向右滑出、新页从左滑入
+    /// - 实际过渡由外层 .transition(.asymmetric(...)) + .animation(value: selected) 驱动
     private func switchTo(_ tab: AppTab) {
         guard tab != selected else { return }
         if let from = AppTab.allCases.firstIndex(of: selected),

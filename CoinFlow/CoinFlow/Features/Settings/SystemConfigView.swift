@@ -100,13 +100,6 @@ struct SystemConfigView: View {
         .hideTabBar()
         .navigationBarHidden(true)
         .enableInteractivePop()
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("完成") { focusedField = nil }
-                    .font(.custom("PingFangSC-Semibold", size: 15))
-            }
-        }
     }
 
     // MARK: - Nav Bar

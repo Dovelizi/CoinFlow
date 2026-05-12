@@ -456,7 +456,8 @@ struct RecordsListView: View {
                 .font(NotionFont.body())
                 .foregroundStyle(Color.inkPrimary)
                 .focused($searchFocused)
-                .submitLabel(.search)
+                .submitLabel(.done)
+                .onSubmit { searchFocused = false }
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
             if !vm.searchQuery.isEmpty {

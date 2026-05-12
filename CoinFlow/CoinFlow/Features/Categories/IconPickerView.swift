@@ -97,6 +97,7 @@ struct IconPickerView: View {
                 .foregroundStyle(Color.inkPrimary)
                 .focused($searchFocused)
                 .submitLabel(.done)
+                .onSubmit { searchFocused = false }
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
             if !query.isEmpty {

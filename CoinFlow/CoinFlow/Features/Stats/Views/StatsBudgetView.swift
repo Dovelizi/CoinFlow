@@ -348,6 +348,7 @@ private struct BudgetSettingsSheet: View {
     @Binding var customMonth: String
 
     @State private var input: String = ""
+    @FocusState private var inputFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     /// 当前是否已自定义本月预算
@@ -365,6 +366,7 @@ private struct BudgetSettingsSheet: View {
                             .foregroundStyle(Color.inkSecondary)
                         TextField("输入月度总预算", text: $input)
                             .keyboardType(.numberPad)
+                            .focused($inputFocused)
                             .font(.system(size: 17, weight: .semibold, design: .rounded).monospacedDigit())
                     }
                 } header: {
@@ -408,6 +410,18 @@ private struct BudgetSettingsSheet: View {
                     Button("保存") { save() }
                         .disabled(Decimal(string: input.trimmingCharacters(in: .whitespaces))
                                     .map { $0 <= 0 } ?? true)
+                }
+                // 数字键盘上方『确认』按钮——与项目其他数字输入（金额/备注）走
+                // KeyboardAccessoryToolbar 的视觉一致：蓝色加粗、收起键盘。
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button {
+                        inputFocused = false
+                    } label: {
+                        Text("确认")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.accentBlue)
+                    }
                 }
             }
             .onAppear {

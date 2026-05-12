@@ -20,9 +20,16 @@ import UIKit
 
 enum KeyboardAccessoryToolbar {
 
-    /// 生成一个含右对齐「完成」按钮的 UIToolbar，作为 inputAccessoryView 使用。
+    /// 生成一个含右对齐「确认」按钮的 UIToolbar，作为 inputAccessoryView 使用。
+    ///
+    /// 视觉规范（与系统蓝色 return key 对齐）：
+    /// - 文案：「确认」（语义上等价于 SwiftUI 的 .submitLabel(.done) 在中文系统的「完成」，
+    ///        但项目内统一用「确认」二字，让用户视觉一致）
+    /// - 颜色：系统蓝（与文本框 return key 同色，让用户感知“这是同类提交按钮”）
+    /// - 字重：semibold，比左侧普通按钮更突出，承担主操作角色
+    ///
     /// - Parameters:
-    ///   - target: 「完成」按钮事件接收者（一般是 UIViewRepresentable 的 Coordinator）
+    ///   - target: 「确认」按钮事件接收者（一般是 UIViewRepresentable 的 Coordinator）
     ///   - action: 选择子，在 target 上必须是 @objc 方法
     static func make(target: Any?, action: Selector) -> UIToolbar {
         let bar = UIToolbar()
@@ -33,13 +40,25 @@ enum KeyboardAccessoryToolbar {
             barButtonSystemItem: .flexibleSpace,
             target: nil, action: nil
         )
-        let done = UIBarButtonItem(
-            title: "完成",
+        let confirm = UIBarButtonItem(
+            title: "确认",
             style: .done,
             target: target,
             action: action
         )
-        bar.items = [flex, done]
+        // 蓝色 + semibold，与系统 return key 视觉一致
+        confirm.tintColor = .systemBlue
+        confirm.setTitleTextAttributes(
+            [.font: UIFont.systemFont(ofSize: 16, weight: .semibold),
+             .foregroundColor: UIColor.systemBlue],
+            for: .normal
+        )
+        confirm.setTitleTextAttributes(
+            [.font: UIFont.systemFont(ofSize: 16, weight: .semibold),
+             .foregroundColor: UIColor.systemBlue.withAlphaComponent(0.5)],
+            for: .highlighted
+        )
+        bar.items = [flex, confirm]
         return bar
     }
 }

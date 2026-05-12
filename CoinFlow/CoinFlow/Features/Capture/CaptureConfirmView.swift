@@ -178,8 +178,6 @@ struct CaptureConfirmView: View {
             clampedToastView
         }
         .themedSheetSurface()
-        // 自绘键盘「完成」工具栏（替代原生 .toolbar { .keyboard }）
-        .keyboardDoneToolbar()
         // 金额拦截 → 弹彩蛋 toast（仅 overLimit 触发，与 NewRecord/RecordDetail 一致）
         .onChange(of: vm.amountClampedAt) { _ in
             showClampedToast()

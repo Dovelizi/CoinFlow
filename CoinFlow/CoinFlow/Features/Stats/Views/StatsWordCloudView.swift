@@ -267,6 +267,7 @@ struct StatsCategorySearchSheet: View {
     let allSlices: [StatsCategorySlice]
     let scheme: ColorScheme
     @State private var query: String = ""
+    @FocusState private var queryFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     private var results: [StatsCategorySlice] {
@@ -338,7 +339,9 @@ struct StatsCategorySearchSheet: View {
             TextField("输入分类名（如：餐饮、交通）", text: $query)
                 .font(NotionFont.body())
                 .foregroundStyle(Color.inkPrimary)
-                .submitLabel(.search)
+                .focused($queryFocused)
+                .submitLabel(.done)
+                .onSubmit { queryFocused = false }
             if !query.isEmpty {
                 Button {
                     query = ""

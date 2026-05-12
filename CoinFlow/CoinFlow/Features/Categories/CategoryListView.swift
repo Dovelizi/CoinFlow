@@ -324,7 +324,6 @@ struct AddCategorySheet: View {
             }
         }
         .themedSheetSurface()
-        .keyboardDoneToolbar()
     }
 
     private var header: some View {
@@ -388,6 +387,8 @@ struct AddCategorySheet: View {
                 .font(NotionFont.body())
                 .foregroundStyle(Color.inkPrimary)
                 .focused($nameFocused)
+                .submitLabel(.done)
+                .onSubmit { nameFocused = false }
                 .padding(.horizontal, NotionTheme.space5)
                 .padding(.vertical, 12)
                 .background(

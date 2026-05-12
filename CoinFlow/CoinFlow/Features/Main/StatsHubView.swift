@@ -116,14 +116,16 @@ struct StatsHubView: View {
     /// 显示边界提示，自动 1.4s 后消失；同方向重复触发时不重置 toast，避免抖动。
     private func showEdgeHint(_ text: String) {
         // 同样文本仍在显示，仅延长一次显示时间（重置定时器）
+        // 入场用 emphasized（起步快、末端缓，符合"出现"心智）
+        // 退场用 exit（起步缓、末端快，符合"消失"心智）
         if edgeHint != text {
-            withAnimation(Motion.exit(0.18)) { edgeHint = text }
+            withAnimation(Motion.respect(Motion.emphasized(0.22))) { edgeHint = text }
         }
         edgeHintTask?.cancel()
         let task = DispatchWorkItem { [text] in
             // 仅当当前显示的还是这条文本时才隐藏（避免覆盖更新的 toast）
             if edgeHint == text {
-                withAnimation(Motion.standard(0.22)) { edgeHint = nil }
+                withAnimation(Motion.respect(Motion.exit(0.20))) { edgeHint = nil }
             }
         }
         edgeHintTask = task
@@ -285,13 +287,17 @@ struct StatsHubView: View {
 
     // MARK: - Wallet style horizontal stack
     //
-    // 设计：紧凑堆叠 + 渐变切换（A 缩小淡出 / B 放大淡入）
+    // 设计：紧凑堆叠 + 连续渐变切换（A 缩小淡出 / B 放大淡入）
     //   - 静态时：卡片紧凑堆叠，左右各 3 张露边（offsetBase 等差 32pt）
-    //   - 拖拽时：手指方向触发 progress；中央卡 scale↓ + opacity↓，相邻卡 scale↑ + opacity↑
-    //     位移仅做"轻微跟手暗示"（×0.18），主要靠渐变表达切换意图
-    //   - 切换：使用 easeOut（无回弹），currentIdx +=1 + dragOffsetX 归零，
-    //     由于位移幅度极小（最大 ~50pt），切换瞬间无可感知跳变
-    //   - drawingGroup()/compositingGroup 做 GPU 离屏合成
+    //   - 拖拽时：dragProgress = dragOffsetX / switchLimit ∈ [-1, 1]
+    //     每张卡的 effective slot = slotOffset - dragProgress 做相邻档插值
+    //     → 中央卡渐变到 abs=1 形态，相邻卡渐变到中央形态
+    //   - 切换（commitSwitch 两阶段）：
+    //     阶段 1：spring 把 dragOffsetX 推到 ±switchLimit，effective 走完整段过渡到目标几何
+    //     阶段 2：动画完成后用 transaction(disablesAnimations) 原子切换 currentIdx + 归零
+    //     由于阶段 1 末与阶段 2 后每张卡的 effective 完全相等，SwiftUI 不会重新插值任何属性
+    //     → 全程零跳变，spring 自带的减速节奏 = "渐入渐出"的视觉感受
+    //   - compositingGroup 做 GPU 离屏合成
 
     /// 单个可见 slot 的几何参数（紧凑堆叠预计算表）
     private struct SlotGeometry {
@@ -337,6 +343,12 @@ struct StatsHubView: View {
     private static let switchLimit: CGFloat = 100
 
     /// 当前拖拽进度：-1 ... 1（负=左拖切下一张，正=右拖切上一张）。
+    /// 静态：`dragOffsetX = 0` → 0
+    /// 拖动：实时跟手
+    /// 松手切换中：spring 动画把 `dragOffsetX` 推到 ±switchLimit（= ±1），
+    /// 让所有形态属性（scale/opacity/offset）连续过渡到"目标卡为新中央"的等效几何，
+    /// 动画完成后才原子性地 `currentIdx += delta` 并 `dragOffsetX = 0`（无动画），
+    /// 此时 dragProgress 又回到 0，但视觉上每张卡的 effective slot 不变 → 全程无跳变。
     private var dragProgress: CGFloat {
         max(-1, min(1, dragOffsetX / Self.switchLimit))
     }
@@ -439,28 +451,72 @@ struct StatsHubView: View {
             showEdgeHint("已是第一张")
         }
 
-        // 切换动画：用 easeOut 替代 spring —— 无回弹，纯粹的"减速到位"
-        // A 渐隐缩小 / B 渐显放大 靠 slotCardView 的形态插值完成，timing curve 决定节奏
-        // duration 0.42s：与之前 spring response 手感匹配，舒展但不拖沓
-        withAnimation(Motion.smooth) {
-            if delta != 0 {
-                currentIdx = max(0, min(totalCardCount - 1, currentIdx + delta))
+        if delta == 0 {
+            // 未达切换条件 / 越界：dragOffsetX 平滑回到 0
+            withAnimation(Motion.respect(Motion.smooth)) {
+                dragOffsetX = 0
             }
-            dragOffsetX = 0
+        } else {
+            commitSwitch(delta: delta)
+        }
+    }
+
+    /// 两阶段切换（消除离散跳变的核心实现）：
+    ///
+    /// 阶段 1：把 `dragOffsetX` 用 spring 推到 `+delta * switchLimit`（同号是关键），
+    /// 这样 `dragProgress = +delta`，所有卡片的 `effective slot = slotOffset - dragProgress`
+    /// 连续过渡到"目标卡为新中央"的等效几何：
+    ///   - 原中央卡（slot=0）：effective: 0 → -delta（缩小淡出到 abs=1 档）
+    ///   - 原 delta 侧相邻卡（slot=delta）：effective: delta → 0（放大淡入到中央档）
+    /// spring 自带的减速节奏天然提供"渐入渐出"的视觉感受。
+    ///
+    /// 阶段 2：动画完成后用 `transaction(disablesAnimations: true)` 原子性地
+    /// `currentIdx += delta` 并 `dragOffsetX = 0`（**无动画**）。
+    /// 此时每张卡的 `slotOffset` 都减少了 delta，同时 `dragProgress` 从 +delta → 0，
+    /// 两者变化在 effective 公式中完全抵消：
+    ///   阶段 1 末：effective = slotOffset - delta
+    ///   阶段 2 后：effective = (slotOffset - delta) - 0 = slotOffset - delta —— **完全相等**
+    /// SwiftUI 检测不到 effective 数值变化 → 不会重新插值任何属性 → 全程零跳变。
+    private func commitSwitch(delta: Int) {
+        let target = max(0, min(totalCardCount - 1, currentIdx + delta))
+        guard target != currentIdx else {
+            withAnimation(Motion.respect(Motion.smooth)) { dragOffsetX = 0 }
+            return
+        }
+
+        // 阶段 1：spring 推到 +delta * switchLimit（注意是 +delta，让 dragProgress 与 slotOffset 切换同号）
+        let phase1Target = CGFloat(delta) * Self.switchLimit
+        withAnimation(Motion.respect(Motion.smooth)) {
+            dragOffsetX = phase1Target
+        }
+        // 阶段 2：动画完成后原子提交（无动画），slotOffset 与 dragProgress 的同步变化在视觉上完全抵消
+        // Motion.smooth 是 spring(response: 0.40, dampingFraction: 0.86)，约 0.42s 收敛到位
+        DispatchQueue.main.asyncAfter(deadline: .now() + Motion.durSlow + 0.02) {
+            // 仅当 dragOffsetX 仍接近阶段1目标时才提交（防止用户中途又开始拖）
+            guard abs(self.dragOffsetX - phase1Target) < 1 else { return }
+            // 关键：用 transaction(disablesAnimations: true) 包裹，确保两个状态变化都不触发隐式动画
+            var tx = Transaction()
+            tx.disablesAnimations = true
+            withTransaction(tx) {
+                self.currentIdx = target
+                self.dragOffsetX = 0
+            }
         }
     }
 
     /// 从 slot 预计算几何 → 生成单张卡视图（紧凑堆叠 + 渐变切换）。
     ///
-    /// 数学模型：
+    /// 数学模型（方案 B：连续 effective slot 驱动）：
     ///   - effectiveSlot = slotOffset - dragProgress（拖拽视为整组虚拟向反方向滑了 |drag| 格）
-    ///   - 形态属性（scale / opacity / shadow / offsetBase）按 effective slot 在 slotTable 相邻档插值
+    ///   - 形态属性（scale / opacity / shadow / offsetBase）全部按 effective slot 在 slotTable 相邻档插值
     ///     → 中央卡（slot=0）拖到 progress=±1 时，effective=±1，形态变为 abs=1 档（变小变淡）
     ///     → 相邻卡（slot=±1，与拖拽方向相反那张）effective=0，变为中央档（变大变实）
-    ///     → 这就是用户描述的"A 缩小淡出 + B 放大淡入"
-    ///   - 位移 x = effective slot 的插值后 offset + dragOffsetX × 0.18（轻微跟手暗示方向）
-    ///     ×0.18 系数：拖 100pt 时整组只挪 18pt，远小于 32pt 堆叠间距，
-    ///     切换瞬间归零的视觉跳变 < 18pt，肉眼无感
+    ///     → 这就是"A 缩小淡出 + B 放大淡入"的渐进过渡
+    ///   - 位移 x = dir × offsetMag（完全由 effective slot 的 offsetBase 插值决定）
+    ///     ⚠️ 不再叠加 `dragOffsetX × 系数` 这种额外项 —— 否则两阶段提交时会瞬变。
+    ///   - 切换提交：commitSwitch 用 spring 把 dragOffsetX 推到 ±switchLimit 让 effective 走到目标几何，
+    ///     动画完成回调中无动画地 `currentIdx += delta` + `dragOffsetX = 0`，此时每张卡的
+    ///     (slotOffset, dragProgress) 同步突变但 effective 数值不变 → SwiftUI 不会重新插值任何属性。
     @ViewBuilder
     private func slotCardView(slot: (slotOffset: Int, cardIdx: Int),
                               cardW: CGFloat, cardH: CGFloat) -> some View {
@@ -484,9 +540,12 @@ struct StatsHubView: View {
 
         // 方向：effective 的符号决定卡片在中央哪一侧
         let dir: CGFloat = effective >= 0 ? 1 : -1
-        // 位移 = 静态堆叠位置 + 轻微跟手暗示（×0.18）
-        // 不做 1:1 跟手，避免破坏紧凑堆叠的视觉布局
-        let x = dir * offsetMag + dragOffsetX * 0.18
+        // 位移 = effective slot 在 slotTable 中的插值后 offset
+        // ⚠️ 这里不再叠加 dragOffsetX × 0.18 这种额外项：
+        //    旧公式在 commitSwitch 提交瞬间会有 18pt 的离散跳变（dragOffsetX 从 ±100 → 0）。
+        //    方案 B 让"跟手暗示"完全由 effective slot 的 offsetBase 连续插值表达，
+        //    阶段 1 末与阶段 2 后每张卡的几何完全一致 → 全程无瞬变。
+        let x = dir * offsetMag
 
         // zIndex：以 effective 距中央距离递减；越接近中央越靠前
         let z: Double = 100 - Double(absEff) * 10
@@ -520,7 +579,7 @@ struct StatsHubView: View {
         if inCenterCard {
             navPath.append(allCards[currentIdx].id)
         } else {
-            // 侧边 → 归位一张（同样尊重边界，与 pan 切换使用一致的 easeOut 无回弹曲线）
+            // 侧边 → 归位一张（与 pan 切换共用 commitSwitch，保证两类切换的视觉曲线完全一致）
             let delta = dx > 0 ? 1 : -1
             let target = currentIdx + delta
             guard target >= 0 && target < totalCardCount else {
@@ -528,9 +587,7 @@ struct StatsHubView: View {
                 showEdgeHint(delta > 0 ? "已是最后一张" : "已是第一张")
                 return
             }
-            withAnimation(Motion.smooth) {
-                currentIdx = target
-            }
+            commitSwitch(delta: delta)
         }
     }
 
