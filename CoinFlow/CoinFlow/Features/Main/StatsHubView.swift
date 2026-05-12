@@ -39,6 +39,9 @@ struct StatsHubView: View {
     @State private var currentIdx: Int = 4
     /// 横向拖拽偏移（由 UIKit pan catcher 驱动）
     @State private var dragOffsetX: CGFloat = 0
+    /// 分步翻页进行中（commitSwitch 递归期间为 true）。
+    /// 期间忽略新的 pan 结束，避免 dragOffsetX 被中途打断。
+    @State private var isChaining: Bool = false
     /// 导航栈路径：用类型擦除的 NavigationPath 同时承载 StatsAnalysisDestination
     /// 与词云/排行点击跳转用的 CategoryDetailTarget。
     @State private var navPath: NavigationPath = NavigationPath()
@@ -287,16 +290,18 @@ struct StatsHubView: View {
 
     // MARK: - Wallet style horizontal stack
     //
-    // 设计：紧凑堆叠 + 连续渐变切换（A 缩小淡出 / B 放大淡入）
+    // 设计：紧凑堆叠 + 传送带式连续滑动（方案 A）
     //   - 静态时：卡片紧凑堆叠，左右各 3 张露边（offsetBase 等差 32pt）
-    //   - 拖拽时：dragProgress = dragOffsetX / switchLimit ∈ [-1, 1]
+    //   - 拖拽时：dragProgress = -dragOffsetX / switchLimit（不夹 ±1，可跨多张）
     //     每张卡的 effective slot = slotOffset - dragProgress 做相邻档插值
-    //     → 中央卡渐变到 abs=1 形态，相邻卡渐变到中央形态
-    //   - 切换（commitSwitch 两阶段）：
-    //     阶段 1：spring 把 dragOffsetX 推到 ±switchLimit，effective 走完整段过渡到目标几何
-    //     阶段 2：动画完成后用 transaction(disablesAnimations) 原子切换 currentIdx + 归零
-    //     由于阶段 1 末与阶段 2 后每张卡的 effective 完全相等，SwiftUI 不会重新插值任何属性
-    //     → 全程零跳变，spring 自带的减速节奏 = "渐入渐出"的视觉感受
+    //     → 整组卡像传送带一样跟着手指连续滑过 N 张
+    //     → 中央卡渐变缩小淡出，目标方向上下一张连续浮现到中央
+    //   - 松手（handlePanEnded）：用"位置 + 速度惯性"算最终落点，
+    //     四舍五入到最近整数 = delta（跨张数）
+    //   - 切换（commitSwitch）：单次 spring 推 dragOffsetX → -delta·switchLimit
+    //     dragProgress 平滑收敛到 +delta，effective 全程连续插值
+    //     动画结束后 transaction 无动画地 currentIdx += delta + 归零
+    //     → 全程零跳变，spring 自带的减速节奏 = "惯性吸附"的视觉感受
     //   - compositingGroup 做 GPU 离屏合成
 
     /// 单个可见 slot 的几何参数（紧凑堆叠预计算表）
@@ -317,18 +322,33 @@ struct StatsHubView: View {
               shadowRadius: 22, shadowOpacity: 0.20, shadowY: 8,
               fadeOpacity: 1.00),
         // absSlot = 1
-        .init(scale: 0.94, offsetBase: 32,
+        // offsetBase = 40：中央卡 drag=±1 时跟手位移最大 ±40pt（跟手率 40%）。
+        // 仅放大空间间距，scale/opacity/shadow 不动 → 不改变形态层次，只是邻卡静态露边更多。
+        .init(scale: 0.94, offsetBase: 40,
               shadowRadius: 14, shadowOpacity: 0.12, shadowY: 5,
               fadeOpacity: 0.88),
         // absSlot = 2
-        .init(scale: 0.88, offsetBase: 60,
+        // 等差延续：增量 28（与 [0]→[1] 的 40 比稍扩散，节奏自然）
+        .init(scale: 0.88, offsetBase: 68,
               shadowRadius: 8,  shadowOpacity: 0.06, shadowY: 3,
               fadeOpacity: 0.55),
         // absSlot = 3（最外，作为入场/出场缓冲，平时几乎不可见）
-        .init(scale: 0.82, offsetBase: 84,
+        .init(scale: 0.82, offsetBase: 92,
               shadowRadius: 4,  shadowOpacity: 0.0, shadowY: 1,
               fadeOpacity: 0.0),
     ]
+
+    /// 形态/层级共用缓动：2 阶 smoothstep（6x⁵ - 15x⁴ + 10x³）
+    /// - 作用：让被驱动的属性在两端（0/1）几乎不变，集中在中段（0.4~0.6）才快速变化
+    /// - 应用范围：
+    ///     · fadeOpacity（中央卡淡出 / 邻卡淡入）—— 隐藏/出现时机延迟
+    ///     · scale（中央卡渐进缩小 / 邻卡渐进放大）—— 与 fade 同节奏，避免脱节
+    ///     · zIndex（中央卡下沉 / 目标邻卡上浮）—— 连续交接，消除阶跃跳变
+    /// - 不影响 offset/shadow —— 位移与阴影保持线性，跟手触感不变
+    private static func fadeEase(_ x: CGFloat) -> CGFloat {
+        let c = max(0, min(1, x))
+        return c * c * c * (c * (c * 6 - 15) + 10)
+    }
 
     /// 最大可见层数（中央外左右各 N 张），= slotTable.count - 1
     private static let maxAbsSlot: Int = 3
@@ -337,32 +357,85 @@ struct StatsHubView: View {
     private static let cardWidth: CGFloat = 290
     private static let cardHeight: CGFloat = 400
 
-    /// 拖拽切换阈值（手指水平移动多少视为完成切换）。
-    /// 紧凑堆叠下不做 1:1 跟手位移，所以 limit 与切换阈值合并：
-    /// 拖过 100pt 即视为完成切换（dragProgress=±1）。
+    /// 拖拽归一化基准（决定 dragProgress 的归一化分母 & commitSwitch spring 阶段 1 目标位移）。
+    /// 同时也是切换触发阈值的基准：`handlePanEnded` 用 `switchLimit * 0.5` 作为位移判定阈值。
+    /// 紧凑堆叠下不做 1:1 跟手位移，保留 100pt 让 spring 阶段 1 的目标几何与原实现一致。
     private static let switchLimit: CGFloat = 100
 
-    /// 当前拖拽进度：-1 ... 1（负=左拖切下一张，正=右拖切上一张）。
+    // MARK: 多卡片连续滑动调参（方案 A：传送带式 + 松手惯性吸附）
+    //
+    // 模型：dragProgress 不再夹在 ±1，而是按 dragOffsetX / switchLimit 直接换算，
+    //       可以连续跨越多个整数。所有可见卡按 effective = slotOffset - dragProgress
+    //       实时插值 → 整组卡像传送带一样跟着手指滑过 N 张。
+    //       松手时按"位置 + 速度惯性"算最终落点（四舍五入到整数 = 跨张数），
+    //       一次 spring 直接推到目标位置，动画结束原子提交。
+
+    /// 拖动跟手系数：手指位移 × follow → dragOffsetX。
+    /// 0.7 = 手指 1000pt 对应进度 7 张（switchLimit=100），日常一甩约 3~5 张，比 1.0 更可控。
+    private static let dragFollow: CGFloat = 0.7
+    /// 速度惯性时长（秒）：松手后用 vx · inertiaTime 估算还会"飞"多远。
+    /// 0.18 = 1500pt/s 的甩动会再多滑 ~270pt = 2.7 张，自然得到"再飞几张"的体感。
+    private static let inertiaTime: CGFloat = 0.18
+    /// 单次手势最多跨越的卡片数（绝对上限，避免速度爆表算出 50 张）。
+    private static let maxJump: Int = 12
+    /// 翻页每张的 spring 时长（0.18s/张）。全程统一 → “唤唤唤”节奏感；
+    /// 不随 delta 增长，保证 5 张跨越仍不拖沱（0.18 × 5 ≈ 0.9s，足够看清每张又不拖踢脚）。
+    private static let flipDuration: Double = 0.18
+
+    /// 当前拖拽进度：-1 ... 1
+    ///
+    /// 方向语义（关键）：
+    ///   手指向左拖（dx < 0 → dragOffsetX < 0）= 想看下一张 = delta = +1 → dragProgress 应 → +1
+    ///   手指向右拖（dx > 0 → dragOffsetX > 0）= 想看上一张 = delta = -1 → dragProgress 应 → -1
+    /// 即 dragProgress 与 commitSwitch 的 delta 同号；与 dragOffsetX 异号（故取负）。
+    ///
+    /// 这样换来的好处（这是"真正跟手 + 联动"的根因）：
+    ///   - effective = slotOffset - dragProgress 与手指方向同向：
+    ///     向左拖时中央卡 effective < 0（dir=-1），x = -offsetMag（向左跟手移动）；
+    ///     右邻卡（slot=+1）effective: 1 → 0，x: +32 → 0（从右侧平滑滑入中央）；
+    ///     左邻卡（slot=-1）effective: -1 → -2，x: -32 → -60（向左继续退场）。
+    ///     → 整组卡片在 effective 驱动下天然 carousel 联动，无需额外 groupShift。
+    ///   - commitSwitch 阶段 1 spring 把 dragOffsetX 推向 -delta * switchLimit（与手势同向继续推进，
+    ///     不再反弹越过 0），dragProgress 平滑从手势值收敛到 +delta，effective 全程单调，无视觉违和。
+    ///
     /// 静态：`dragOffsetX = 0` → 0
-    /// 拖动：实时跟手
-    /// 松手切换中：spring 动画把 `dragOffsetX` 推到 ±switchLimit（= ±1），
-    /// 让所有形态属性（scale/opacity/offset）连续过渡到"目标卡为新中央"的等效几何，
+    /// 拖动：实时跟手（取负即可，因为 effective 公式吃 dragProgress 而不是直接吃 dragOffsetX）
+    /// 松手切换：spring 推 dragOffsetX 到 -delta * switchLimit（= -delta），让 dragProgress → +delta，
     /// 动画完成后才原子性地 `currentIdx += delta` 并 `dragOffsetX = 0`（无动画），
-    /// 此时 dragProgress 又回到 0，但视觉上每张卡的 effective slot 不变 → 全程无跳变。
+    /// 此时 dragProgress 又回到 0，但每张卡 effective 不变 → 全程零跳变。
+    /// 当前拖拽进度（方案 A：可跨越多张，传送带式连续滑动）
+    ///
+    /// 数学：progress = -dragOffsetX / switchLimit，正负号约定见下。
+    ///   手指向左拖（dx < 0 → dragOffsetX < 0）= 想看下一张 → progress > 0
+    ///   手指向右拖（dx > 0 → dragOffsetX > 0）= 想看上一张 → progress < 0
+    ///
+    /// 不再夹在 ±1：dragOffsetX 累计很大时 progress 也跟着变大（如 2.7 = 已滑过 2.7 张）。
+    /// 所有可见卡按 effective = slotOffset - progress 实时插值，整组卡像传送带一样滑动。
+    ///
+    /// 边界夹紧：按"剩余可滑张数"硬夹（首张时 progress 不能 < 0，末张时不能 > 剩余张数），
+    /// 这样手指拖到边界外只会让橡皮筋（dragOffsetX 已被 handlePanChanged 阻尼）失效化，
+    /// 视觉上整组卡片就停在合法范围内不再继续滑。
     private var dragProgress: CGFloat {
-        max(-1, min(1, dragOffsetX / Self.switchLimit))
+        let raw = -dragOffsetX / Self.switchLimit
+        // 还能向"下一张"方向滑多少张（progress 正方向上限）
+        let forwardRoom = CGFloat(totalCardCount - 1 - currentIdx)
+        // 还能向"上一张"方向滑多少张（progress 负方向下限取负值）
+        let backwardRoom = CGFloat(currentIdx)
+        return max(-backwardRoom, min(forwardRoom, raw))
     }
 
     private var horizontalCardStack: some View {
         let cardW = Self.cardWidth
         let cardH = Self.cardHeight
 
-        // 7 张可见：slotOffset ∈ [-3, ..., 3]，按边界裁剪（不再循环）
-        // 实际只有 abs<=2 的卡有可见 opacity；abs=3 作为入场缓冲用于拖拽时淡入
+        // 7+ 张可见：基础 maxAbsSlot=3，再按 dragProgress 动态扩展。
+        // 拖到 progress=2.7 时，slot=+3 (= effective 0.3) 已经接近中央位置，必须可见；
+        // 同时反向远端 slot=-3 已经 effective=-5.7（远到完全不可见），但保留也无伤大雅。
+        // 取 ceil(|progress|) + maxAbsSlot 即可保证目标方向上至少多渲染 |progress| 张。
         //
-        // 边界处理：去掉循环。currentIdx 在两端时不再绕回，仅渲染存在的下标，
-        // 这样首张左侧 / 末张右侧空缺，符合"不能再往那边滑"的视觉预期。
-        let range = Self.maxAbsSlot
+        // 边界处理：去掉循环。currentIdx 在两端时不再绕回，仅渲染存在的下标。
+        let dragMag = Int(ceil(abs(dragProgress)))
+        let range = Self.maxAbsSlot + dragMag
         let visibleSlots: [(slotOffset: Int, cardIdx: Int)] = (-range...range).compactMap {
             let idx = currentIdx + $0
             guard idx >= 0 && idx < totalCardCount else { return nil }
@@ -410,96 +483,105 @@ struct StatsHubView: View {
     private var atRightEdge: Bool { currentIdx == totalCardCount - 1 }
 
     private func handlePanChanged(dx: CGFloat) {
-        // 边界橡皮筋：在边界向外侧拖时强阻尼 + clamp，让用户感到"拉得动但很重"。
-        // 中部正常拖：超过 switchLimit 后加重阻尼（×0.35），保持手感但避免拖出去太远。
+        // 方案 A：传送带式连续滑动
+        //   中部：dragOffsetX = dx × dragFollow，可以无限累计（手指划越多卡过越多）
+        //   边界：向"无卡"侧拖时强阻尼 + clamp，让用户感到"拉得动但很重"
         let outward = (dx > 0 && atLeftEdge) || (dx < 0 && atRightEdge)
-        let damped: CGFloat
         if outward {
             let sign: CGFloat = dx > 0 ? 1 : -1
-            damped = sign * min(abs(dx) * 0.28, 70)
+            dragOffsetX = sign * min(abs(dx) * 0.28, 70)
         } else {
-            let limit = Self.switchLimit
-            if abs(dx) > limit {
-                let excess = abs(dx) - limit
-                damped = (dx > 0 ? 1 : -1) * (limit + excess * 0.35)
-            } else {
-                damped = dx
-            }
+            dragOffsetX = dx * Self.dragFollow
         }
-        dragOffsetX = damped
     }
 
     private func handlePanEnded(dx: CGFloat, vx: CGFloat) {
-        // 切换阈值：位移过 switchLimit 的 50% 或速度足够大
-        let threshold: CGFloat = Self.switchLimit * 0.5
-        let rawDelta: Int
-        if vx < -500 || dx < -threshold {
-            rawDelta = 1
-        } else if vx > 500 || dx > threshold {
-            rawDelta = -1
-        } else {
-            rawDelta = 0
-        }
+        // 分步翻页进行中：忽略新 pan 结束，避免 dragOffsetX 被中途打断
+        if isChaining { return }
 
-        // 边界判定：若意图越过边界，吞掉 delta 并提示
-        var delta = rawDelta
-        if rawDelta == 1 && atRightEdge {
-            delta = 0
-            showEdgeHint("已是最后一张")
-        } else if rawDelta == -1 && atLeftEdge {
-            delta = 0
-            showEdgeHint("已是第一张")
-        }
+        // 方案 A：松手惯性吸附
+        //
+        // 思路：把"当前已滑过多少张（dragProgress）"+"速度还会再飞多远"加起来，
+        //      四舍五入到最近整数 = 这次手势最终切换的张数 delta。
+        //      然后用一次 spring 把 dragOffsetX 推到目标位置，整组卡像传送带一样
+        //      平滑滑过 |delta| 张，动画结束原子提交 currentIdx。
+        //
+        // 公式：
+        //   inertiaProgress = -vx · inertiaTime / switchLimit   （vx 与 progress 异号，故取负）
+        //   predicted = currentProgress + inertiaProgress
+        //   delta = round(predicted)，按边界 clamp，再按 maxJump 兜底
+
+        let currentProgress = dragProgress
+        let inertiaProgress = -vx * Self.inertiaTime / Self.switchLimit
+        let predicted = currentProgress + inertiaProgress
+
+        // 四舍五入到最近整数
+        var delta = Int(predicted.rounded())
+
+        // maxJump 上限保护（防止极端速度算出离谱跨张数）
+        if delta > Self.maxJump { delta = Self.maxJump }
+        if delta < -Self.maxJump { delta = -Self.maxJump }
+
+        // 边界 clamp + 越界提示
+        let target = max(0, min(totalCardCount - 1, currentIdx + delta))
+        delta = target - currentIdx
 
         if delta == 0 {
-            // 未达切换条件 / 越界：dragOffsetX 平滑回到 0
-            withAnimation(Motion.respect(Motion.smooth)) {
-                dragOffsetX = 0
+            // 落点 = 当前卡：可能是手势太轻、也可能是已在边界还想往外滑
+            // 后者给一次提示（与拖拽时的橡皮筋视觉呼应）
+            if (predicted > 0.5 && atRightEdge) {
+                showEdgeHint("已是最后一张")
+            } else if (predicted < -0.5 && atLeftEdge) {
+                showEdgeHint("已是第一张")
             }
+            withAnimation(Motion.respect(Motion.smooth)) { dragOffsetX = 0 }
         } else {
             commitSwitch(delta: delta)
         }
     }
 
-    /// 两阶段切换（消除离散跳变的核心实现）：
+    /// 切换提交（翻书式分步翻页）
     ///
-    /// 阶段 1：把 `dragOffsetX` 用 spring 推到 `+delta * switchLimit`（同号是关键），
-    /// 这样 `dragProgress = +delta`，所有卡片的 `effective slot = slotOffset - dragProgress`
-    /// 连续过渡到"目标卡为新中央"的等效几何：
-    ///   - 原中央卡（slot=0）：effective: 0 → -delta（缩小淡出到 abs=1 档）
-    ///   - 原 delta 侧相邻卡（slot=delta）：effective: delta → 0（放大淡入到中央档）
-    /// spring 自带的减速节奏天然提供"渐入渐出"的视觉感受。
-    ///
-    /// 阶段 2：动画完成后用 `transaction(disablesAnimations: true)` 原子性地
-    /// `currentIdx += delta` 并 `dragOffsetX = 0`（**无动画**）。
-    /// 此时每张卡的 `slotOffset` 都减少了 delta，同时 `dragProgress` 从 +delta → 0，
-    /// 两者变化在 effective 公式中完全抵消：
-    ///   阶段 1 末：effective = slotOffset - delta
-    ///   阶段 2 后：effective = (slotOffset - delta) - 0 = slotOffset - delta —— **完全相等**
-    /// SwiftUI 检测不到 effective 数值变化 → 不会重新插值任何属性 → 全程零跳变。
+    /// 思路：跨多张拆分为 N 次单张切换，每张用 0.18s spring，依次接续。
+        ///   → 视觉上能看到每一张依次"唤、唤、唤"翻过中央，5 张跨越约 0.9s。
+    /// 路径：
+    /// - 单张：手势末未完成的 dragOffsetX 从当前值 spring 到 -1·switchLimit → 原子提交→结束
+    /// - 多张：同样递归调用自身，每次 delta 减一张，直到跨越完成
+    /// - 全程 isChaining=true，防止手势打断
     private func commitSwitch(delta: Int) {
-        let target = max(0, min(totalCardCount - 1, currentIdx + delta))
-        guard target != currentIdx else {
+        let actual = max(-currentIdx, min(totalCardCount - 1 - currentIdx, delta))
+        guard actual != 0 else {
             withAnimation(Motion.respect(Motion.smooth)) { dragOffsetX = 0 }
+            isChaining = false
             return
         }
 
-        // 阶段 1：spring 推到 +delta * switchLimit（注意是 +delta，让 dragProgress 与 slotOffset 切换同号）
-        let phase1Target = CGFloat(delta) * Self.switchLimit
-        withAnimation(Motion.respect(Motion.smooth)) {
+        // 进入分步阶段：上锁
+        isChaining = true
+        let sign = actual > 0 ? 1 : -1
+        let stepAnim: Animation = .spring(response: Self.flipDuration, dampingFraction: 0.86)
+        let phase1Target = -CGFloat(sign) * Self.switchLimit
+
+        // 阶段 1：spring 推 dragOffsetX 从当前值 → -sign·switchLimit
+        // （手势末 dragOffsetX 可能已经接近这个值，spring 会自适应缩短路程）
+        withAnimation(Motion.respect(stepAnim)) {
             dragOffsetX = phase1Target
         }
-        // 阶段 2：动画完成后原子提交（无动画），slotOffset 与 dragProgress 的同步变化在视觉上完全抵消
-        // Motion.smooth 是 spring(response: 0.40, dampingFraction: 0.86)，约 0.42s 收敛到位
-        DispatchQueue.main.asyncAfter(deadline: .now() + Motion.durSlow + 0.02) {
-            // 仅当 dragOffsetX 仍接近阶段1目标时才提交（防止用户中途又开始拖）
-            guard abs(self.dragOffsetX - phase1Target) < 1 else { return }
-            // 关键：用 transaction(disablesAnimations: true) 包裹，确保两个状态变化都不触发隐式动画
+
+        // 阶段 2：动画结束后原子提交本张，有剩余则递归翻下一张
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.flipDuration + 0.02) {
             var tx = Transaction()
             tx.disablesAnimations = true
             withTransaction(tx) {
-                self.currentIdx = target
+                self.currentIdx = max(0, min(self.totalCardCount - 1, self.currentIdx + sign))
                 self.dragOffsetX = 0
+            }
+            // 递归翻下一张（剩余 = actual - sign）
+            let remaining = actual - sign
+            if remaining != 0 {
+                self.commitSwitch(delta: remaining)
+            } else {
+                self.isChaining = false
             }
         }
     }
@@ -521,6 +603,8 @@ struct StatsHubView: View {
     private func slotCardView(slot: (slotOffset: Int, cardIdx: Int),
                               cardW: CGFloat, cardH: CGFloat) -> some View {
         let drag = dragProgress
+        // 连续 effective slot：每张卡的当前"虚拟槽位"。
+        // 静态：等于 slotOffset；拖拽时整组虚拟向反向滑 |drag| 格 → 形态/位移连续过渡。
         let effective = CGFloat(slot.slotOffset) - drag
 
         // 形态属性按 effective slot 在相邻档插值
@@ -531,8 +615,13 @@ struct StatsHubView: View {
         let lower = Self.slotTable[lowerIdx]
         let upper = Self.slotTable[upperIdx]
 
-        let scale = lower.scale + (upper.scale - lower.scale) * t
-        let fade  = lower.fadeOpacity + (upper.fadeOpacity - lower.fadeOpacity) * Double(t)
+        // scale 与 fade 共用同一条 2 阶 smoothstep 曲线：两端钝化、中段陡变
+        // → 中央卡"渐进消失（慢慢变小）"：drag 前半程几乎仍是 1.0，后半程才明显缩小
+        // → 邻卡"渐进浮现（慢慢变大）"：drag 前半程几乎仍是 0.94，后半程才明显放大
+        // 与 fade/zIndex 节奏完全一致，避免"位置先变、形态后变"的脱节感。
+        let fadeT = Self.fadeEase(t)
+        let scale = lower.scale + (upper.scale - lower.scale) * fadeT
+        let fade  = lower.fadeOpacity + (upper.fadeOpacity - lower.fadeOpacity) * Double(fadeT)
         let offsetMag = lower.offsetBase + (upper.offsetBase - lower.offsetBase) * t
         let shadowR  = lower.shadowRadius + (upper.shadowRadius - lower.shadowRadius) * t
         let shadowOp = lower.shadowOpacity + (upper.shadowOpacity - lower.shadowOpacity) * Double(t)
@@ -547,8 +636,33 @@ struct StatsHubView: View {
         //    阶段 1 末与阶段 2 后每张卡的几何完全一致 → 全程无瞬变。
         let x = dir * offsetMag
 
-        // zIndex：以 effective 距中央距离递减；越接近中央越靠前
-        let z: Double = 100 - Double(absEff) * 10
+        // zIndex：连续插值的层级交接（消除"突然跳到最上层"的离散跳变）
+        //
+        // 旧实现用 2/3 硬阈值：drag 跨过该点瞬间，目标邻卡 z 从 ~93 跳到 105（差 12 单位），
+        // 视觉上就是"啪"地一下盖到最上层 → 这才是用户感受到的"卡片跳出式切换"根因。
+        //
+        // 新实现：用 fadeEase(|drag|) 重映射的进度让中央卡自然降级、目标邻卡自然加冕，
+        // 两条曲线在中段自然交叉，SwiftUI 直接按 z 排序，全程无任何阶跃。
+        //   · 中央卡（slot=0）：z = 100 - 10·ease   （drag=0 → 100，drag=±1 → 90）
+        //   · 目标邻卡（abs=1 且与 drag 同号）：z = 95 + 10·ease （drag=0 → 95，drag=±1 → 105）
+        //   · 反向邻卡 / 远卡：保持距中央递减分布，不参与交接
+        // 用 fadeEase 而非线性，是为了与 scale/fade 同节奏：前半程交接慢、后半程才明显接管。
+        //
+        // ⚠️ ViewBuilder 函数体顶层不能 if + 赋值，统一用三元表达式输出 z。
+        let dragMag = abs(drag)
+        let dragEase = Self.fadeEase(dragMag)
+        // drag 必须有真实方向（>1e-6）才认为存在"目标邻卡"——否则静止状态下 +0 的 sign=.plus
+        // 会让 slot=+1 被误判为 target，引发 C2 mask 下左右邻卡可见性不对称。
+        let hasDirection = dragMag > 1e-6
+        let isTargetNeighbor = hasDirection
+            && abs(slot.slotOffset) == 1
+            && (CGFloat(slot.slotOffset).sign == drag.sign)
+        // 注意：@ViewBuilder 函数体顶层禁用 if + 赋值（会被当成 View 分支返回 ()），统一用三目表达式
+        let z: Double = slot.slotOffset == 0
+            ? 100 - 10 * Double(dragEase)
+            : (isTargetNeighbor
+                ? 95 + 10 * Double(dragEase)
+                : 100 - Double(absEff) * 10)
 
         let isCenter = slot.slotOffset == 0
 
