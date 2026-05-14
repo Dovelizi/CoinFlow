@@ -34,7 +34,7 @@ struct Migration {
 enum Migrations {
 
     /// 当前最新版本号。每次新增表/字段时 +1，并新增对应 Migration。
-    static let latestVersion: Int = 5
+    static let latestVersion: Int = 7
 
     /// 全部已知 migration（按版本号升序）。
     static let all: [Migration] = [
@@ -77,6 +77,34 @@ enum Migrations {
                 "DROP INDEX IF EXISTS idx_bills_summary_period;",
                 Schema.createBillsSummaryUniqIndex
             ]
+        ),
+        Migration(
+            version: 6,
+            description: "M11 AA 分账：ledger 加 aa_status / settling_started_at / completed_at；"
+                       + "record 加 aa_settlement_id；新建 aa_member / aa_share 表与索引。",
+            statements: [
+                "ALTER TABLE ledger ADD COLUMN aa_status TEXT;",
+                "ALTER TABLE ledger ADD COLUMN settling_started_at INTEGER;",
+                "ALTER TABLE ledger ADD COLUMN completed_at INTEGER;",
+                "ALTER TABLE record ADD COLUMN aa_settlement_id TEXT;",
+                Schema.createAAMember,
+                Schema.createAAShare,
+                Schema.createAAMemberUniqIndex,
+                Schema.createAAMemberLedgerIndex,
+                Schema.createAAShareRecordIndex,
+                Schema.createAAShareMemberIndex
+            ],
+            tolerateDuplicateColumn: true
+        ),
+        Migration(
+            version: 7,
+            description: "M12 AA 重构：record 加 source_kind（普通 / aa_settlement）+ settlement_status"
+                       + "（settling / settled），用于'AA 分账净额占位'写在个人账本上的渲染与状态切换。",
+            statements: [
+                "ALTER TABLE record ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'normal';",
+                "ALTER TABLE record ADD COLUMN settlement_status TEXT;"
+            ],
+            tolerateDuplicateColumn: true
         )
     ]
 

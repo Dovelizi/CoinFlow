@@ -616,10 +616,13 @@ final class HomeViewModel: ObservableObject {
                     .list(kind: nil, includeDeleted: true)
                     .map { ($0.id, $0) }
             )
+            // 方案 C1：首页"本月净增"只统计个人账本（含 AA 净额占位），不含 AA 原始流水。
+            // AA 原始流水属于各自的 AA 账本（ledgerId != default），不参与个人收支。
+            // 占位（sourceKind=.aaSettlement）位于 default-ledger 上，自然进入统计。
             let allRecords = try SQLiteRecordRepository.shared.list(.init(
                 ledgerId: DefaultSeeder.defaultLedgerId,
                 includesDeleted: false,
-                limit: 500
+                limit: 5000
             ))
 
             // 当月切片

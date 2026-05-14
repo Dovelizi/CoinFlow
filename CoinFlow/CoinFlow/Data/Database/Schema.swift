@@ -73,6 +73,8 @@ enum Schema {
         sync_attempts     INTEGER NOT NULL DEFAULT 0,
         attachment_local_path   TEXT,
         attachment_remote_token TEXT,
+        source_kind       TEXT NOT NULL DEFAULT 'normal',
+        settlement_status TEXT,
         created_at        INTEGER NOT NULL,
         updated_at        INTEGER NOT NULL,
         deleted_at        INTEGER
@@ -182,6 +184,69 @@ enum Schema {
         ON bills_summary(period_kind, period_start);
     """
 
+    // MARK: - v6 AA 分账（M11）
+
+    /// AA 分账成员表。每个成员归属一个 `type=aa` 的 ledger，承载昵称 / emoji 头像 /
+    /// 支付状态。`status`：`pending`（默认）/ `paid`（用户已勾选"该成员已把钱给我了"）。
+    static let createAAMember = """
+    CREATE TABLE IF NOT EXISTS aa_member (
+        id              TEXT PRIMARY KEY,
+        ledger_id       TEXT NOT NULL REFERENCES ledger(id),
+        name            TEXT NOT NULL,
+        avatar_emoji    TEXT,
+        status          TEXT NOT NULL DEFAULT 'pending',
+        paid_at         INTEGER,
+        sort_order      INTEGER NOT NULL DEFAULT 0,
+        created_at      INTEGER NOT NULL,
+        updated_at      INTEGER NOT NULL,
+        deleted_at      INTEGER
+    );
+    """
+
+    /// AA 分账：流水到成员的应付明细。一笔流水有 N 行，每行表示某成员对该笔的应付金额。
+    /// `is_custom = 1` 表示用户在高级模式手动设置的金额（非平均分摊计算结果）。
+    static let createAAShare = """
+    CREATE TABLE IF NOT EXISTS aa_share (
+        id              TEXT PRIMARY KEY,
+        record_id       TEXT NOT NULL REFERENCES record(id),
+        member_id       TEXT NOT NULL REFERENCES aa_member(id),
+        amount          TEXT NOT NULL,
+        is_custom       INTEGER NOT NULL DEFAULT 0,
+        created_at      INTEGER NOT NULL,
+        updated_at      INTEGER NOT NULL,
+        deleted_at      INTEGER
+    );
+    """
+
+    /// AA 成员名 + ledger 唯一（不含软删行：用 partial index）。
+    /// 不参与 ON CONFLICT upsert，仅作为读取/校验防重复使用。
+    static let createAAMemberUniqIndex = """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_aa_member_ledger_name
+        ON aa_member(ledger_id, name)
+        WHERE deleted_at IS NULL;
+    """
+
+    /// 按 ledger 拉成员列表。
+    static let createAAMemberLedgerIndex = """
+    CREATE INDEX IF NOT EXISTS idx_aa_member_ledger
+        ON aa_member(ledger_id)
+        WHERE deleted_at IS NULL;
+    """
+
+    /// 按 record 拉分摊明细（流水分摊视图主查询路径）。
+    static let createAAShareRecordIndex = """
+    CREATE INDEX IF NOT EXISTS idx_aa_share_record
+        ON aa_share(record_id)
+        WHERE deleted_at IS NULL;
+    """
+
+    /// 按 member 聚合应付总额。
+    static let createAAShareMemberIndex = """
+    CREATE INDEX IF NOT EXISTS idx_aa_share_member
+        ON aa_share(member_id)
+        WHERE deleted_at IS NULL;
+    """
+
     // MARK: - 聚合：v1 全部建表 + 索引语句
 
     /// 按依赖顺序排列：voice_session 必须先于 record（record 引用其 id）。
@@ -201,6 +266,7 @@ enum Schema {
     static let tableNames: [String] = [
         "ledger", "category", "voice_session",
         "record", "quota_usage", "user_settings",
-        "bills_summary"
+        "bills_summary",
+        "aa_member", "aa_share"
     ]
 }

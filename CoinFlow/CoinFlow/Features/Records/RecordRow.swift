@@ -10,6 +10,17 @@ struct RecordRow: View {
 
     let record: Record
     let category: Category?
+    /// AA 标签（外部 VM 计算后传入）：
+    /// - nil：纯个人流水
+    /// - .settled：已结算 AA 回写流水（紫色"AA"）
+    /// - .pending：未结算 AA 原始流水（橙色"AA · 待结算"）
+    let aaBadge: RecordAABadge?
+
+    init(record: Record, category: Category?, aaBadge: RecordAABadge? = nil) {
+        self.record = record
+        self.category = category
+        self.aaBadge = aaBadge
+    }
 
     var body: some View {
         HStack(alignment: .center, spacing: NotionTheme.space5) {
@@ -40,10 +51,14 @@ struct RecordRow: View {
 
     private var textBlock: some View {
         VStack(alignment: .leading, spacing: NotionTheme.space2) {
-            Text(category?.name ?? "未分类")
-                .font(NotionFont.bodyBold())
-                .foregroundStyle(Color.inkPrimary)
-                .lineLimit(1)
+            HStack(spacing: NotionTheme.space2) {
+                Text(category?.name ?? "未分类")
+                    .font(NotionFont.bodyBold())
+                    .foregroundStyle(Color.inkPrimary)
+                    .lineLimit(1)
+                // M11+：AA 状态徽标（由外部 VM 决策，路径 A）
+                aaBadgeView
+            }
             if let note = record.note, !note.isEmpty {
                 Text(note)
                     .font(NotionFont.small())
@@ -55,6 +70,34 @@ struct RecordRow: View {
                     .foregroundStyle(Color.inkTertiary)
                     .lineLimit(1)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var aaBadgeView: some View {
+        switch aaBadge {
+        case .none:
+            EmptyView()
+        case .settledPlaceholder:
+            Text("AA · 已结算")
+                .font(NotionFont.micro())
+                .foregroundStyle(Color.accentPurple)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.accentPurple.opacity(0.12))
+                )
+        case .settlingPlaceholder:
+            Text("AA · 结算中")
+                .font(NotionFont.micro())
+                .foregroundStyle(Color.statusWarning)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color.statusWarning.opacity(0.14))
+                )
         }
     }
 

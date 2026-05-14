@@ -45,6 +45,8 @@ struct CaptureConfirmView: View {
     @State private var showFullImage = false
     @State private var showTimePicker = false
     @State private var showNoteEditor = false
+    /// M11+：账本选择器（AALedgerPickerSheet）显隐
+    @State private var showLedgerPicker = false
     /// 键盘焦点枚举（官方最佳实践：单一 FocusState + 外层单一 toolbar）
     private enum Field: Hashable { case amount }
     /// 金额输入框 focus 状态（失焦触发校验）
@@ -192,6 +194,14 @@ struct CaptureConfirmView: View {
                 }
             )
             .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showLedgerPicker) {
+            AALedgerPickerSheet(
+                currentSelection: vm.selectedAALedger,
+                onPick: { picked in vm.selectedAALedger = picked }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showTimePicker) {
             timePickerSheet
@@ -488,6 +498,8 @@ struct CaptureConfirmView: View {
             timeRow
             innerDivider
             categoryRow
+            innerDivider
+            ledgerRow
         }
         .background(
             RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
@@ -725,6 +737,21 @@ struct CaptureConfirmView: View {
             state: state,
             tappable: true,
             action: { showCategoryPicker = true }
+        )
+    }
+
+    /// M11+：账本行 —— 默认个人账户；点击弹 AALedgerPickerSheet 切换为某个 AA 账本。
+    /// 选中 AA 账本后，vm.save() 内部会把 record.ledgerId 落到该 AA 账本（已有逻辑）。
+    private var ledgerRow: some View {
+        let isAA = vm.selectedAALedger != nil
+        return fieldRow(
+            label: "账本",
+            value: vm.selectedAALedger?.name ?? "个人账户",
+            icon: isAA ? "person.2.fill" : "book",
+            iconTint: isAA ? Color.accentPurple : nil,
+            state: .none,
+            tappable: true,
+            action: { showLedgerPicker = true }
         )
     }
 

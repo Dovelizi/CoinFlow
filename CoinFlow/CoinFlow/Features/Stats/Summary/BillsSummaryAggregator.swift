@@ -165,13 +165,20 @@ enum BillsSummaryAggregator {
         let cur = periodBounds(kind: kind, reference: reference, timeZone: timeZone)
         let prev = previousPeriodBounds(kind: kind, currentStart: cur.start, timeZone: timeZone)
 
-        // 当前期所有未删除记录
+        // 方案 C1：仅统计个人账本（ledgerId == default，含 AA 净额占位）。
+        // AA 账本原始流水（ledgerId=AA）属于该 AA 账本，不进个人统计；
+        // 占位（sourceKind=.aaSettlement）位于 default-ledger 上，自然纳入。
+        let defaultLedgerId = DefaultSeeder.defaultLedgerId
+
+        // 当前期个人账本未删除记录
         let curRecords = try recordRepo.list(.init(
+            ledgerId: defaultLedgerId,
             fromDate: cur.start, toDate: cur.end,
             includesDeleted: false, limit: nil
         ))
-        // 上一期记录（仅用于环比）
+        // 上一期个人账本记录（仅用于环比）
         let prevRecords = try recordRepo.list(.init(
+            ledgerId: defaultLedgerId,
             fromDate: prev.start, toDate: prev.end,
             includesDeleted: false, limit: nil
         ))

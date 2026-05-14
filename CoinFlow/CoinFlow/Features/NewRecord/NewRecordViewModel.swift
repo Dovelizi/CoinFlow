@@ -40,6 +40,10 @@ final class NewRecordViewModel: ObservableObject {
     @Published var occurredAt: Date = Date()
     @Published var note: String = ""
 
+    /// M11 AA 分账：用户在新建流水页主动选择的受款 AA 账本（仅接受
+    /// `aaStatus = .recording` 的账本。为 nil 时走个人账户（default-ledger）。
+    @Published var selectedAALedger: Ledger?
+
     @Published private(set) var saveError: String?
     @Published private(set) var isSaving: Bool = false
 
@@ -194,16 +198,20 @@ final class NewRecordViewModel: ObservableObject {
             }
         }
 
+        // M11 AA 分账：选中 AA 账本时覆盖 ledgerId 与 payerUserId
+        let resolvedLedgerId: String = selectedAALedger?.id ?? self.ledgerId
+        let resolvedPayerUserId: String? = (selectedAALedger != nil) ? AAOwner.currentUserId : nil
+
         let record = Record(
             id: recordId,
-            ledgerId: ledgerId,
+            ledgerId: resolvedLedgerId,
             categoryId: category.id,
             amount: amount,
             currency: "CNY",
             occurredAt: occurredAt,
             timezone: TimeZone.current.identifier,
             note: note.isEmpty ? nil : note,
-            payerUserId: nil,
+            payerUserId: resolvedPayerUserId,
             participants: nil,
             source: source,
             ocrConfidence: ocrConfidence,
@@ -216,6 +224,7 @@ final class NewRecordViewModel: ObservableObject {
             syncAttempts: 0,
             attachmentLocalPath: attachmentPath,
             attachmentRemoteToken: nil,
+            aaSettlementId: nil,
             createdAt: now,
             updatedAt: now,
             deletedAt: nil

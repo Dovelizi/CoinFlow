@@ -47,6 +47,11 @@ final class VoiceWizardViewModel: ObservableObject {
 
     @Published private(set) var sessionId: String = UUID().uuidString
 
+    /// M11+：本次语音会话目标账本。nil = 个人账户（默认）；非 nil = AA 账本，
+    /// 该会话所有 confirmed bills 入库时统一使用该 ledger.id。
+    /// VoiceWizardStepView 顶部"账本"行点击弹 AALedgerPickerSheet 修改此值。
+    @Published var selectedAALedger: Ledger?
+
     // MARK: - Deps
 
     private let audioRecorder = AudioRecorder()
@@ -368,10 +373,20 @@ final class VoiceWizardViewModel: ObservableObject {
     /// M7 修复问题 4：summary 阶段统一把所有 confirmed 笔入库。
     /// 失败的笔累计到 session.error，但不阻塞其他笔的入库。
     /// 返回实际成功入库的笔数。
+    /// M11+：调用方可显式传入 ledgerId；不传时默认按 selectedAALedger 决定
+    ///       （选了 AA → AA 账本 + payerUserId；未选 → 个人 default ledger）。
     @discardableResult
-    func finalizeAllToDatabase(ledgerId: String = DefaultSeeder.defaultLedgerId) -> Int {
+    func finalizeAllToDatabase(ledgerId: String? = nil) -> Int {
         var successCount = 0
         let now = Date()
+        // 解析最终入库 ledgerId / payerUserId：
+        // 1. 显式传 ledgerId → 用传入值（保留向后兼容）
+        // 2. 选了 AA 账本    → 用其 id + payerUserId = 当前用户
+        // 3. 默认           → defaultLedgerId
+        let resolvedLedgerId: String = ledgerId
+            ?? selectedAALedger?.id
+            ?? DefaultSeeder.defaultLedgerId
+        let resolvedPayerUserId: String? = (selectedAALedger != nil) ? AAOwner.currentUserId : nil
         for bill in bills where confirmedIds.contains(bill.id) {
             guard let amount = bill.amount, amount > 0,
                   let occurredAt = bill.occurredAt,
@@ -383,14 +398,14 @@ final class VoiceWizardViewModel: ObservableObject {
             }
             let record = Record(
                 id: UUID().uuidString,
-                ledgerId: ledgerId,
+                ledgerId: resolvedLedgerId,
                 categoryId: category.id,
                 amount: amount,
                 currency: "CNY",
                 occurredAt: occurredAt,
                 timezone: TimeZone.current.identifier,
                 note: bill.note,
-                payerUserId: nil,
+                payerUserId: resolvedPayerUserId,
                 participants: nil,
                 source: usedEngine == .whisper ? .voiceCloud : .voiceLocal,
                 ocrConfidence: nil,

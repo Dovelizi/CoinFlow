@@ -6,6 +6,8 @@
 **/*.xcworkspace/xcuserdata/
 **/.swiftpm/
 **/Package.resolved
+**/skills/
+**/CoinFlowTests/
 
 # ====== Real secrets — never commit ======
 # CoinFlow 真实配置（API key 等）。仅 Config.example.plist 可进仓库。

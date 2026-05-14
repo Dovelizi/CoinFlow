@@ -1,48 +1,39 @@
 //  StatsAABalanceView.swift
-//  CoinFlow · V2 Stats · AA 账本结算
+//  CoinFlow · Stats · AA 账本数据统计
 //
-//  设计基线：design/screens/05-stats/aa-balance-light.png（实际图是 main 命名错位）+ Preview 实现
-//  - 顶部"我应付/我应收"hero（红 / 绿大数字）
-//  - 总开支/应分摊/已支付三栏
-//  - 结算明细列表（成员头像 + 角色 + 应收/应付）
-//  - 消费时间轴（垂直线 + 圆点节点 + 单条事件）
-//
-//  数据：扫描 record.payerUserId / participants / ledgerType=ledger 来识别 AA 账本。
-//        当前 M1-M7 主线 Ledger 仅支持 personal，AA 字段虽建表但无 UI 入口写入。
-//        所以本视图统一显示"暂无 AA 账本"占位 + V2 banner，避免假数据误导用户。
+//  M11+ 重写：从原"等待 V2"占位升级为真正的 AA 数据统计页。
+//  - Hero：累计 AA 金额 + 账本数
+//  - 状态分组：记录中 / 结算中 / 已完成 各自数量与金额
+//  - 应付应收：从已完成 AA 回写到默认账本的流水（带 aaSettlementId）汇总
+//  - 最近活跃：前 5 个 AA 账本卡片，点击跳详情
 
 import SwiftUI
 
 struct StatsAABalanceView: View {
-    @StateObject private var vm: StatsViewModel
-    @Environment(\.colorScheme) private var scheme
-    @State private var showAddMember = false
 
-    init(month: YearMonth = .current) {
-        _vm = StateObject(wrappedValue: StatsViewModel(month: month))
-    }
-
-    /// 是否存在任何带 participants 的 record（AA 入口已经被使用过）。
-    private var hasAARecords: Bool {
-        vm.allRecords.contains(where: {
-            ($0.participants?.count ?? 0) > 0
-        })
-    }
+    @StateObject private var vm = StatsAABalanceViewModel()
 
     var body: some View {
         VStack(spacing: 0) {
             StatsSubNavBar(title: "AA 账本",
-                           subtitle: hasAARecords ? "本月共享账单" : "等待启用",
-                           trailingIcon: "person.badge.plus",
-                           trailingAction: { showAddMember = true },
-                           trailingAccessibility: "添加 AA 成员")
+                           subtitle: vm.subtitle)
             ScrollView {
-                VStack(spacing: NotionTheme.space7) {
-                    v2Banner
-                    if hasAARecords {
-                        aaContent
-                    } else {
+                VStack(spacing: NotionTheme.space6) {
+                    if vm.totalLedgerCount == 0 {
                         emptyContent
+                    } else {
+                        heroCard
+                        statusBreakdown
+                        balanceCard
+                        if !vm.recentLedgers.isEmpty {
+                            recentSection
+                        }
+                    }
+                    if let err = vm.loadError {
+                        Text(err)
+                            .font(NotionFont.small())
+                            .foregroundStyle(Color.dangerRed)
+                            .padding()
                     }
                 }
                 .padding(.horizontal, NotionTheme.space5)
@@ -54,61 +45,291 @@ struct StatsAABalanceView: View {
         .navigationBarHidden(true)
         .hideTabBar()
         .onAppear { vm.reload() }
-        .sheet(isPresented: $showAddMember) {
-            AAMemberAddSheet()
-        }
     }
 
-    private var v2Banner: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "person.2.fill")
-                .font(.system(size: 12))
-                .foregroundStyle(Color.accentPurple)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("AA 账本（多人共享）正在路上")
-                    .font(.custom("PingFangSC-Semibold", size: 12))
-                    .foregroundStyle(Color.inkPrimary)
-                Text("V2 将开放：创建 AA 账本 / 添加成员 / 自动结算")
-                    .font(NotionFont.micro())
-                    .foregroundStyle(Color.inkSecondary)
-            }
-            Spacer(minLength: 0)
+    // MARK: - Hero（累计金额 + 账本数）
+
+    private var heroCard: some View {
+        VStack(spacing: NotionTheme.space3) {
+            Text("累计 AA 金额")
+                .font(NotionFont.micro())
+                .foregroundStyle(Color.inkTertiary)
+            Text("¥" + StatsFormat.decimalGrouped(vm.totalAmount))
+                .font(.system(size: 38, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(Color.inkPrimary)
+            Text("\(vm.totalLedgerCount) 个 AA 账本 · \(vm.totalRecordCount) 笔流水")
+                .font(NotionFont.small())
+                .foregroundStyle(Color.inkSecondary)
         }
-        .padding(NotionTheme.space5)
+        .frame(maxWidth: .infinity)
+        .padding(NotionTheme.space6)
         .background(
             RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
-                .fill(Color.accentPurple.opacity(0.12))
+                .fill(Color.hoverBg.opacity(0.5))
         )
     }
 
-    private var emptyContent: some View {
-        StatsEmptyState(title: "还没有 AA 账本记录",
-                        subtitle: "V2 上线后，您可以为旅游 / 聚餐等场景创建多人共享账本，自动计算每人应分摊金额")
-            .frame(height: 320)
+    // MARK: - 状态分组（3 个统计卡）
+
+    private var statusBreakdown: some View {
+        VStack(alignment: .leading, spacing: NotionTheme.space3) {
+            Text("按状态")
+                .font(NotionFont.bodyBold())
+                .foregroundStyle(Color.inkPrimary)
+            HStack(spacing: NotionTheme.space3) {
+                statusPill(title: "记录中",
+                           count: vm.recordingCount,
+                           amount: vm.recordingAmount,
+                           color: Color.accentBlue)
+                statusPill(title: "结算中",
+                           count: vm.settlingCount,
+                           amount: vm.settlingAmount,
+                           color: Color.statusWarning)
+                statusPill(title: "已完成",
+                           count: vm.completedCount,
+                           amount: vm.completedAmount,
+                           color: Color.statusSuccess)
+            }
+        }
     }
 
-    private var aaContent: some View {
-        // hasAARecords 路径仅做最简骨架，等待 V2 真实数据流；不构造伪数据
-        VStack(spacing: NotionTheme.space5) {
-            let aaRecords = vm.allRecords.filter { ($0.participants?.count ?? 0) > 0 }
-            let total = aaRecords.map(\.amount).reduce(Decimal(0), +)
-            VStack(spacing: 4) {
-                Text("总开支")
-                    .font(NotionFont.micro())
-                    .foregroundStyle(Color.inkTertiary)
-                Text("¥" + StatsFormat.decimalGrouped(total))
-                    .font(.system(size: 38, weight: .semibold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(NotionColor.purple.text(scheme))
-                Text("\(aaRecords.count) 笔 · 等待 V2 结算引擎")
-                    .font(NotionFont.small())
-                    .foregroundStyle(Color.inkSecondary)
+    private func statusPill(title: String,
+                            count: Int,
+                            amount: Decimal,
+                            color: Color) -> some View {
+        VStack(alignment: .leading, spacing: NotionTheme.space2) {
+            Text(title)
+                .font(NotionFont.micro())
+                .foregroundStyle(color)
+            Text("\(count)")
+                .font(.system(size: 22, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(Color.inkPrimary)
+            Text("¥" + StatsFormat.compactK(amount))
+                .font(NotionFont.micro().monospacedDigit())
+                .foregroundStyle(Color.inkSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(NotionTheme.space4)
+        .background(
+            RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
+                .fill(color.opacity(0.10))
+        )
+    }
+
+    // MARK: - 应付应收（基于已完成 AA 的回写流水）
+
+    private var balanceCard: some View {
+        VStack(alignment: .leading, spacing: NotionTheme.space3) {
+            Text("已结算累计")
+                .font(NotionFont.bodyBold())
+                .foregroundStyle(Color.inkPrimary)
+            HStack(spacing: NotionTheme.space5) {
+                balanceColumn(title: "已收",
+                              amount: vm.settledIncome,
+                              color: Color.statusSuccess)
+                Divider().frame(height: 36)
+                balanceColumn(title: "已付",
+                              amount: vm.settledExpense,
+                              color: Color.dangerRed)
             }
-            .frame(maxWidth: .infinity)
             .padding(NotionTheme.space5)
+            .frame(maxWidth: .infinity)
             .background(
                 RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
                     .fill(Color.hoverBg.opacity(0.5))
             )
+            Text("数据来源：已完成 AA 账本回写到个人账单的流水")
+                .font(NotionFont.micro())
+                .foregroundStyle(Color.inkTertiary)
+        }
+    }
+
+    private func balanceColumn(title: String,
+                               amount: Decimal,
+                               color: Color) -> some View {
+        VStack(spacing: 4) {
+            Text(title)
+                .font(NotionFont.micro())
+                .foregroundStyle(Color.inkTertiary)
+            Text("¥" + StatsFormat.decimalGrouped(amount))
+                .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(color)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - 最近活跃（前 5）
+
+    private var recentSection: some View {
+        VStack(alignment: .leading, spacing: NotionTheme.space3) {
+            Text("最近活跃")
+                .font(NotionFont.bodyBold())
+                .foregroundStyle(Color.inkPrimary)
+            VStack(spacing: NotionTheme.space3) {
+                ForEach(vm.recentLedgers) { item in
+                    NavigationLink(value: AASplitListDestination(ledgerId: item.ledger.id)) {
+                        recentRow(item)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private func recentRow(_ item: AASplitListItem) -> some View {
+        HStack(spacing: NotionTheme.space4) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.ledger.name)
+                    .font(NotionFont.body())
+                    .foregroundStyle(Color.inkPrimary)
+                    .lineLimit(1)
+                if let last = item.lastRecordAt {
+                    Text("最近 \(formatRelative(last)) · \(item.recordCount) 笔")
+                        .font(NotionFont.micro())
+                        .foregroundStyle(Color.inkTertiary)
+                } else {
+                    Text("尚无流水")
+                        .font(NotionFont.micro())
+                        .foregroundStyle(Color.inkTertiary)
+                }
+            }
+            Spacer()
+            Text("¥" + StatsFormat.decimalGrouped(item.totalAmount))
+                .font(NotionFont.body().monospacedDigit())
+                .foregroundStyle(Color.inkPrimary)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11))
+                .foregroundStyle(Color.inkTertiary)
+        }
+        .padding(NotionTheme.space5)
+        .background(
+            RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
+                .fill(Color.hoverBg.opacity(0.5))
+        )
+    }
+
+    // MARK: - 空态
+
+    private var emptyContent: some View {
+        StatsEmptyState(
+            title: "还没有 AA 账本",
+            subtitle: "在「账单」Tab 切到 AA 视图即可创建分账，旅游、聚餐等场景的账目会在这里聚合显示"
+        )
+        .frame(height: 360)
+    }
+
+    // MARK: - 工具
+
+    private func formatRelative(_ d: Date) -> String {
+        let f = RelativeDateTimeFormatter()
+        f.locale = Locale(identifier: "zh_CN")
+        f.unitsStyle = .short
+        return f.localizedString(for: d, relativeTo: Date())
+    }
+}
+
+// MARK: - ViewModel
+
+@MainActor
+final class StatsAABalanceViewModel: ObservableObject {
+
+    @Published private(set) var totalAmount: Decimal = 0
+    @Published private(set) var totalLedgerCount: Int = 0
+    @Published private(set) var totalRecordCount: Int = 0
+
+    @Published private(set) var recordingCount: Int = 0
+    @Published private(set) var recordingAmount: Decimal = 0
+    @Published private(set) var settlingCount: Int = 0
+    @Published private(set) var settlingAmount: Decimal = 0
+    @Published private(set) var completedCount: Int = 0
+    @Published private(set) var completedAmount: Decimal = 0
+
+    @Published private(set) var settledIncome: Decimal = 0
+    @Published private(set) var settledExpense: Decimal = 0
+
+    @Published private(set) var recentLedgers: [AASplitListItem] = []
+    @Published private(set) var loadError: String?
+
+    var subtitle: String {
+        if totalLedgerCount == 0 { return "等待启用" }
+        return "\(totalLedgerCount) 个账本 · 已结算 \(completedCount)"
+    }
+
+    func reload() {
+        do {
+            let ledgers = try SQLiteLedgerRepository.shared
+                .listAA(status: nil, includeArchived: false)
+
+            var items: [AASplitListItem] = []
+            for l in ledgers {
+                let records = try SQLiteRecordRepository.shared.list(
+                    RecordQuery(ledgerId: l.id, limit: 5000)
+                )
+                let visible = records.filter { $0.deletedAt == nil }
+                let total = visible.reduce(Decimal(0)) { $0 + $1.amount }
+                let last = visible.map(\.occurredAt).max()
+                let memberCount = (try? SQLiteAAMemberRepository.shared
+                    .list(ledgerId: l.id).count) ?? 0
+                items.append(AASplitListItem(
+                    ledger: l,
+                    totalAmount: total,
+                    recordCount: visible.count,
+                    lastRecordAt: last,
+                    memberCount: memberCount
+                ))
+            }
+
+            // 总览
+            totalLedgerCount = items.count
+            totalAmount = items.reduce(Decimal(0)) { $0 + $1.totalAmount }
+            totalRecordCount = items.reduce(0) { $0 + $1.recordCount }
+
+            // 状态分组
+            let recording = items.filter { $0.status == .recording }
+            let settling  = items.filter { $0.status == .settling }
+            let completed = items.filter { $0.status == .completed }
+            recordingCount  = recording.count
+            recordingAmount = recording.reduce(Decimal(0)) { $0 + $1.totalAmount }
+            settlingCount   = settling.count
+            settlingAmount  = settling.reduce(Decimal(0)) { $0 + $1.totalAmount }
+            completedCount  = completed.count
+            completedAmount = completed.reduce(Decimal(0)) { $0 + $1.totalAmount }
+
+            // 应付应收：扫所有已 completed 账本，对应 default ledger 上带 aaSettlementId 的回写流水
+            let categories = (try? SQLiteCategoryRepository.shared
+                .list(kind: nil, includeDeleted: true)) ?? []
+            let catKindById: [String: CategoryKind] = Dictionary(
+                uniqueKeysWithValues: categories.map { ($0.id, $0.kind) }
+            )
+            var income: Decimal = 0
+            var expense: Decimal = 0
+            for c in completed {
+                let writebacks = (try? SQLiteRecordRepository.shared
+                    .findByAASettlementId(c.ledger.id)) ?? []
+                for r in writebacks where r.deletedAt == nil {
+                    switch catKindById[r.categoryId] {
+                    case .income:  income  += r.amount
+                    case .expense: expense += r.amount
+                    case .none:    break
+                    }
+                }
+            }
+            settledIncome = income
+            settledExpense = expense
+
+            // 最近活跃前 5（按最后流水时间倒序，没有流水的排后面）
+            recentLedgers = items.sorted { a, b in
+                switch (a.lastRecordAt, b.lastRecordAt) {
+                case let (la?, lb?): return la > lb
+                case (.some, .none): return true
+                case (.none, .some): return false
+                case (.none, .none): return a.ledger.createdAt > b.ledger.createdAt
+                }
+            }.prefix(5).map { $0 }
+
+            loadError = nil
+        } catch {
+            loadError = "加载失败：\(error.localizedDescription)"
         }
     }
 }

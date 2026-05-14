@@ -1,7 +1,7 @@
 //  MainTabView.swift
 //  CoinFlow · M7 · 全局导航
 //
-//  4 个 Tab（首页 / 流水 / 统计 / 我的）。
+//  5 个 Tab（首页 / 账单 / AA / 统计 / 我的）。
 //  M11 升级（小红书风格滑块）：
 //  - 选中态从「tab 内部背景」改为「独立 indicator overlay」，所有 tab 项视觉对齐
 //  - indicator 用 .matchedGeometryEffect 跟随选中 tab，spring 平移过渡
@@ -12,7 +12,8 @@ import SwiftUI
 
 enum AppTab: String, CaseIterable, Hashable {
     case home    = "首页"
-    case records = "流水"
+    case records = "账单"
+    case aaSplit = "AA"
     case stats   = "统计"
     case me      = "我的"
 
@@ -20,6 +21,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self {
         case .home:    return "house"
         case .records: return "list.bullet.rectangle.portrait"
+        case .aaSplit: return "person.2"
         case .stats:   return "chart.pie"
         case .me:      return "person.circle"
         }
@@ -29,6 +31,7 @@ enum AppTab: String, CaseIterable, Hashable {
         switch self {
         case .home:    return "house.fill"
         case .records: return "list.bullet.rectangle.portrait.fill"
+        case .aaSplit: return "person.2.fill"
         case .stats:   return "chart.pie.fill"
         case .me:      return "person.circle.fill"
         }
@@ -92,6 +95,10 @@ struct MainTabView: View {
                     HomeMainView(switchTab: { switchTo($0) }, coordinator: coordinator)
                 case .records:
                     RecordsListView(coordinator: coordinator)
+                case .aaSplit:
+                    NavigationStack {
+                        AASplitListView(embedded: true)
+                    }
                 case .stats:
                     StatsHubView()
                 case .me:

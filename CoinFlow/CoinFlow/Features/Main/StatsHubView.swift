@@ -94,6 +94,10 @@ struct StatsHubView: View {
                 StatsCategoryDetailView(preferredCategoryId: target.categoryId,
                                         month: vm.month)
             }
+            // StatsAABalanceView 中"最近活跃"行点击 → 直达 AA 分账详情
+            .navigationDestination(for: AASplitListDestination.self) { dest in
+                AASplitDetailView(ledgerId: dest.ledgerId)
+            }
             .sheet(isPresented: $showMonthPicker) {
                 StatsMonthPickerSheet(selected: vm.month) { picked in
                     vm.month = picked
@@ -791,7 +795,7 @@ struct StatsHubView: View {
         case .wordcloud: StatsWordCloudView(month: vm.month)
         case .budget:    StatsBudgetView(month: vm.month)
         case .main:      StatsMainView(month: vm.month)
-        case .aa:        StatsAABalanceView(month: vm.month)
+        case .aa:        StatsAABalanceView()
         case .category:  StatsCategoryDetailView(month: vm.month)
         case .year:      StatsYearView(month: vm.month)
         case .hourly:    StatsHourlyView(month: vm.month)

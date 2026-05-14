@@ -152,6 +152,10 @@ final class AppState: ObservableObject {
             seed = .failed(error.localizedDescription)
         }
 
+        // 2.1 M12 一次性迁移：清理 M11 方案 B 的 AA 双向回写残留（aaSettlementId 非空且
+        //     sourceKind != .aaSettlement 的旧记录）。幂等：完成后写 flag，下次启动跳过。
+        AAMigrationsM12.cleanupLegacyWritebacksIfNeeded()
+
         // 2.5 首次启动日期（Dark Glass 设置页"加入 N 天"副标题数据源）
         // - 只在首次启动时写入；后续启动不覆盖
         // - 无论 Seed 成功与否都尝试写入（读到 DB 就说明 bootstrap 步骤 1 已通过）

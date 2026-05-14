@@ -21,6 +21,8 @@ struct VoiceWizardStepView: View {
     let onExit: () -> Void
 
     @State private var showCategoryPicker = false
+    /// M11+：账本选择器（AALedgerPickerSheet）显隐
+    @State private var showLedgerPicker = false
 
     /// 金额输入框的当前文本（与 vm.currentBill.amount 双向同步）。
     /// 设计原因：vm.currentBill.amount 是 Decimal?，View 层 TextField 需要 String，
@@ -184,6 +186,14 @@ struct VoiceWizardStepView: View {
                 }
             )
             .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showLedgerPicker) {
+            AALedgerPickerSheet(
+                currentSelection: vm.selectedAALedger,
+                onPick: { picked in vm.selectedAALedger = picked }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -534,24 +544,38 @@ struct VoiceWizardStepView: View {
         .padding(.vertical, 14)
     }
 
-    /// 账本行（M5 单账本，固定显示"我的账本"，不可点击）
+    /// 账本行（M11+）：默认"我的账本"（个人账户）；点击弹 AALedgerPickerSheet 切换为 AA 账本。
+    /// 选中 AA 账本后，summary 阶段 finalizeAllToDatabase 会把整批 confirmed bills 落到该 AA 账本。
     private var ledgerRow: some View {
-        HStack(spacing: NotionTheme.space5) {
-            Image(systemName: "book")
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(Color.inkSecondary)
-                .frame(width: 24)
-            Text("账本")
-                .font(NotionFont.body())
-                .foregroundStyle(Color.inkSecondary)
-            Spacer()
-            Text("我的账本")
-                .font(NotionFont.body())
-                .foregroundStyle(Color.inkPrimary)
-                .lineLimit(1)
+        let isAA = vm.selectedAALedger != nil
+        let displayName = vm.selectedAALedger?.name ?? "我的账本"
+        return Button {
+            showLedgerPicker = true
+        } label: {
+            HStack(spacing: NotionTheme.space5) {
+                Image(systemName: isAA ? "person.2.fill" : "book")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(isAA ? Color.accentPurple : Color.inkSecondary)
+                    .frame(width: 24)
+                Text("账本")
+                    .font(NotionFont.body())
+                    .foregroundStyle(Color.inkSecondary)
+                Spacer()
+                Text(displayName)
+                    .font(NotionFont.body())
+                    .foregroundStyle(Color.inkPrimary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.inkTertiary)
+            }
+            .padding(.horizontal, NotionTheme.space5)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, NotionTheme.space5)
-        .padding(.vertical, 14)
+        .buttonStyle(.pressableSoft)
+        .accessibilityLabel("账本：\(displayName)")
+        .accessibilityHint("点击切换账本")
     }
 
     private var rowDivider: some View {

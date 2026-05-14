@@ -56,7 +56,13 @@ final class RecordDetailViewModel: ObservableObject {
     var direction: CategoryKind { selectedCategory?.kind ?? .expense }
 
     var parsedAmount: Decimal? {
-        let trimmed = amountText.trimmingCharacters(in: .whitespaces)
+        // 修复：amountText 初始值来自 AmountFormatter.display(record.amount)，
+        // 它会带千分位逗号（如 "12,500"），直接 Decimal(string:) 会返回 nil，
+        // 导致 isDirty 把"未修改"的记录误判为 dirty。
+        // 解析前剥离逗号即可（用户键盘也输入不出逗号；UIKit 只允许数字 + 小数点）。
+        let trimmed = amountText
+            .trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: ",", with: "")
         guard !trimmed.isEmpty, let d = Decimal(string: trimmed), d > 0 else { return nil }
         return d
     }

@@ -24,6 +24,26 @@ enum SyncStatus: String, Codable {
     case failed
 }
 
+/// 流水的"种类"——区分普通流水与系统生成的特殊占位。
+/// 个人账单列表渲染、统计聚合、点击行为都依赖此字段。
+enum RecordSourceKind: String, Codable {
+    /// 默认：用户手动/OCR/语音录入的普通流水
+    case normal
+    /// AA 分账结算占位：当某 AA 账本进入"结算中"时，
+    /// 系统在 default-ledger 上为当前用户生成 1 条净额占位（仅"我"）。
+    /// 配合 settlementStatus 渲染"AA 分账·结算中/已结算"徽标，点击只读 + 跳转 AA 详情。
+    case aaSettlement = "aa_settlement"
+}
+
+/// AA 占位的结算状态。
+/// - settling：AA 账本处于结算中阶段（用户可能还在调整成员/分摊）
+/// - settled：AA 账本已完成结算（金额冻结）
+/// 普通流水（sourceKind == .normal）此字段为 nil。
+enum AASettlementStatus: String, Codable {
+    case settling
+    case settled
+}
+
 /// 流水记录（对应 SQLite `record` 表，§3.1 核心表）。
 struct Record: Identifiable, Codable, Equatable {
     let id: String                  // UUID（业务主键 = Firestore document id）
@@ -52,6 +72,15 @@ struct Record: Identifiable, Codable, Equatable {
     var attachmentLocalPath: String?
     /// M9-Fix4 OCR 附件：飞书 file_token（uploadAttachment 成功后写回）
     var attachmentRemoteToken: String?
+    /// M11 AA 分账：当本流水是「分账完成回写」生成的（即写在 default-ledger 上的
+    /// 收入/支出流水），该字段写入对应 AA Ledger 的 id，用于在 RecordDetailSheet
+    /// 反向跳转到 AA 详情页。普通流水为 nil。
+    var aaSettlementId: String?
+    /// M12 AA 重构：流水种类（普通 / AA 占位）。默认 .normal 兼容老数据。
+    var sourceKind: RecordSourceKind = .normal
+    /// M12 AA 重构：仅当 sourceKind == .aaSettlement 时有值，
+    /// 表示该占位对应 AA 账本所处的结算阶段。
+    var settlementStatus: AASettlementStatus?
     // 时间戳
     var createdAt: Date
     var updatedAt: Date

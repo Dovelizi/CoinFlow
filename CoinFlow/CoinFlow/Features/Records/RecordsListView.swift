@@ -46,6 +46,9 @@ struct RecordsListView: View {
     @State private var showSearchBar: Bool = false
     /// 待确认删除的记录（左滑触发；nil 表示无 pending）
     @State private var pendingDeleteRecord: Record?
+    /// 路径 A：个人模式下点击未结算 AA 流水跳到该 AA 详情页。
+    /// nil 表示无 pending；非 nil 时 NavigationStack push 详情页。
+    @State private var pendingAAJumpDestination: AASplitListDestination?
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -54,7 +57,6 @@ struct RecordsListView: View {
                 ThemedBackgroundLayer(kind: .records)
                 VStack(spacing: 0) {
                     navBar
-                    // M7 [01-3]：搜索栏以 inline transition 插入 nav 下方
                     if showSearchBar {
                         searchBarInline
                             .transition(Motion.dropDown)
@@ -70,6 +72,18 @@ struct RecordsListView: View {
             }
             .navigationDestination(isPresented: $showSettings) {
                 SettingsView()
+            }
+            // 路径 A：未结算 AA 流水点击跳到对应 AA 详情页。
+            // iOS 16 兼容：用 isPresented + 派生 Binding 包装 pendingAAJumpDestination。
+            .navigationDestination(isPresented: Binding(
+                get: { pendingAAJumpDestination != nil },
+                set: { if !$0 { pendingAAJumpDestination = nil } }
+            )) {
+                if let dest = pendingAAJumpDestination {
+                    AASplitDetailView(ledgerId: dest.ledgerId)
+                } else {
+                    EmptyView()
+                }
             }
             .sheet(isPresented: $showNewRecord) {
                 NewRecordModal(onSaved: { _ in
@@ -194,33 +208,35 @@ struct RecordsListView: View {
     // - 右：搜索 toggle
     private var navBar: some View {
         ZStack {
-            // 中央双层标题：点击触发月份选择 sheet
-            Button {
-                Haptics.tap()
-                showSearchBar = false
-                showMonthPicker = true
-            } label: {
-                VStack(spacing: 2) {
-                    // 主标题 + 下拉箭头：暗示可点击切换月份
+            // 中央：月份 chip
+            HStack(spacing: NotionTheme.space3) {
+                // 月份 chip：点击弹出月份选择 sheet
+                Button {
+                    Haptics.tap()
+                    showSearchBar = false
+                    showMonthPicker = true
+                } label: {
                     HStack(spacing: 6) {
                         Text(navTitleText)
-                            .font(NotionFont.h2())
+                            .font(NotionFont.bodyBold())
                             .foregroundStyle(Color.inkPrimary)
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(Color.inkTertiary)
                     }
-                    Text("点击切换月份")
-                        .font(NotionFont.micro())
-                        .foregroundStyle(Color.inkTertiary)
+                    .padding(.horizontal, NotionTheme.space5)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.hoverBg)
+                    )
+                    .contentShape(Capsule())
                 }
-                .padding(.horizontal, NotionTheme.space4)
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
+                .buttonStyle(.pressableSoft)
+                .accessibilityLabel("切换月份，当前 \(navTitleText)")
+                .accessibilityHint("双击选择其他月份")
             }
-            .buttonStyle(.pressableSoft)
-            .accessibilityLabel("切换月份，当前 \(navTitleText)")
-            .accessibilityHint("双击选择其他月份")
+            .frame(maxWidth: .infinity, alignment: .center)
 
             // 左：加号 Menu（原右上角）
             //
@@ -386,7 +402,11 @@ struct RecordsListView: View {
     private func listContent(for group: DayGroup) -> some View {
         VStack(spacing: 0) {
             ForEach(Array(group.records.enumerated()), id: \.element.id) { idx, record in
-                RecordRow(record: record, category: vm.category(for: record))
+                RecordRow(
+                    record: record,
+                    category: vm.category(for: record),
+                    aaBadge: vm.aaInfo(for: record)
+                )
                     .contentShape(Rectangle())
                     .background(
                         // 行级按下反馈：仅高亮背景，不缩放（避免相邻 cell 抖动）
@@ -394,7 +414,23 @@ struct RecordsListView: View {
                     )
                     .onTapGesture {
                         Haptics.tap()
-                        detailRecord = record
+                        // 占位流水点击策略：
+                        // - 结算中（.settlingPlaceholder）：金额还在变，直接跳 AA 详情页继续配置；
+                        // - 已结算（.settledPlaceholder）：当成"真实分账流水"对待，走 RecordDetailSheet。
+                        //   sheet 内 AASettlementLinkSection 会渲染一行"AA 分账详情 → "供二跳。
+                        // - 普通流水：走 RecordDetailSheet。
+                        if let badge = vm.aaInfo(for: record) {
+                            switch badge {
+                            case .settlingPlaceholder(let ledgerId, _):
+                                pendingAAJumpDestination = AASplitListDestination(
+                                    ledgerId: ledgerId
+                                )
+                            case .settledPlaceholder:
+                                detailRecord = record
+                            }
+                        } else {
+                            detailRecord = record
+                        }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button(role: .destructive) {

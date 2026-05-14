@@ -48,6 +48,7 @@ struct RecordDetailSheet: View {
                     categoryField
                     noteField
                     AttachmentPreviewSection(record: vm.original)
+                    AASettlementLinkSection(record: vm.original)
                     metaInfo
                     deleteButton
                 }
@@ -578,6 +579,103 @@ private struct AttachmentFullScreenView: View {
             }
             .padding(.top, 12)
             .padding(.trailing, 16)
+        }
+    }
+}
+
+// MARK: - AA 分账反向链接（M11，需求 9.7 / 11.5）
+//
+// 仅当 record.aaSettlementId != nil 时显示一行入口卡片：
+// - AA 账本仍存在：点击 push 到 AASplitDetailView
+// - AA 账本已软删/不存在：展示灰态文案"该分账已删除"，不可点击
+//
+// 这是「分账完成后回写到 default-ledger 的流水」反查 AA 详情的唯一入口。
+private struct AASettlementLinkSection: View {
+    let record: Record
+
+    /// 关联 AA 账本（同步从 LedgerRepository 读，不走 ViewModel；该字段一旦写入不会变）
+    @State private var aaLedger: Ledger?
+    /// 是否已查询过（决定 "ledger == nil" 究竟是"未加载"还是"已删除"）
+    @State private var loaded: Bool = false
+    @State private var navigate: Bool = false
+
+    @ViewBuilder
+    var body: some View {
+        if let aaId = record.aaSettlementId, !aaId.isEmpty {
+            VStack(spacing: 0) {
+                if loaded, let ledger = aaLedger {
+                    Button {
+                        Haptics.tap()
+                        navigate = true
+                    } label: {
+                        rowContent(
+                            icon: "person.2.fill",
+                            title: "AA 分账详情",
+                            value: ledger.name,
+                            valueColor: Color.inkPrimary,
+                            chevron: true
+                        )
+                    }
+                    .buttonStyle(.pressableRow)
+                    .background(
+                        NavigationLink(
+                            destination: AASplitDetailView(ledgerId: ledger.id),
+                            isActive: $navigate
+                        ) { EmptyView() }
+                        .opacity(0)
+                    )
+                } else {
+                    rowContent(
+                        icon: "person.2.slash",
+                        title: "AA 分账详情",
+                        value: loaded ? "该分账已删除" : "加载中…",
+                        valueColor: Color.inkTertiary,
+                        chevron: false
+                    )
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
+                    .fill(Color.hoverBg)
+            )
+            .task(id: aaId) { await load(aaId: aaId) }
+        }
+    }
+
+    private func rowContent(icon: String,
+                            title: String,
+                            value: String,
+                            valueColor: Color,
+                            chevron: Bool) -> some View {
+        HStack(spacing: NotionTheme.space5) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(Color.inkSecondary)
+                .frame(width: 24)
+            Text(title)
+                .font(NotionFont.body())
+                .foregroundStyle(Color.inkPrimary)
+            Spacer()
+            Text(value)
+                .font(NotionFont.body())
+                .foregroundStyle(valueColor)
+                .lineLimit(1)
+            if chevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.inkTertiary)
+            }
+        }
+        .padding(NotionTheme.space5)
+    }
+
+    @MainActor
+    private func load(aaId: String) async {
+        // LedgerRepository.find 已经过滤软删行；返回 nil 视为"已删除/不存在"
+        let found = (try? SQLiteLedgerRepository.shared.find(id: aaId)) ?? nil
+        await MainActor.run {
+            self.aaLedger = found
+            self.loaded = true
         }
     }
 }

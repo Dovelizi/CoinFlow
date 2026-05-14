@@ -34,6 +34,11 @@ final class RecordsListViewModel: ObservableObject {
     // MARK: - Cache
 
     private var categoryById: [String: Category] = [:]
+    /// AA 账本 id → 状态。用于 RecordRow 渲染"AA · 待结算"徽标 + 跳转 AA 详情页。
+    /// reload 时从 ledger 表刷新。
+    private(set) var aaLedgerStatusById: [String: AAStatus] = [:]
+    /// AA 账本 id → 名称。用于点击未结算 AA 流水时跳到对应详情页。
+    private(set) var aaLedgerNameById: [String: String] = [:]
 
     // MARK: - State
 
@@ -60,10 +65,24 @@ final class RecordsListViewModel: ObservableObject {
                     .list(kind: nil, includeDeleted: true)
                     .map { ($0.id, $0) }
             )
+            // 方案 C1：账单 Tab 个人模式只展示 default-ledger 流水（含 AA 净额占位）。
+            // - AA 原始流水属于 AA 账本（ledgerId != default），不在此处出现，
+            //   只在 AA 详情页内可见、可改。
+            // - 占位 = sourceKind == .aaSettlement，由 AASplitService 在 settling/completed
+            //   时自动写入个人账本，承载"我"在该 AA 账本下的净额。
+            // 同时缓存所有 AA 账本的 id→name 映射，供占位卡渲染"AA 分账·xxx 名称"。
+            let aaLedgers = (try? SQLiteLedgerRepository.shared
+                .listAA(status: nil, includeArchived: true)) ?? []
+            aaLedgerStatusById = Dictionary(uniqueKeysWithValues: aaLedgers.compactMap { ledger in
+                ledger.aaStatus.map { st in (ledger.id, st) }
+            })
+            aaLedgerNameById = Dictionary(uniqueKeysWithValues: aaLedgers.map { ($0.id, $0.name) })
+
+            // 仅拉 default-ledger 流水
             let all = try SQLiteRecordRepository.shared.list(.init(
                 ledgerId: ledgerId,
                 includesDeleted: false,
-                limit: 2000
+                limit: 5000
             ))
             // M7-Fix2：按月过滤
             var filtered = all
@@ -89,14 +108,41 @@ final class RecordsListViewModel: ObservableObject {
                 }
             }
             groups = DateGrouping.group(filtered)
+            // 汇总：default-ledger 全集（普通流水 + AA 占位）。
+            // 占位 categoryId = preset-income-transfer / preset-expense-other，
+            // 走分类原本的 kind，不需要特殊处理。
             let split = AmountFormatter.split(filtered) { [weak self] cid in
                 self?.categoryById[cid]?.kind ?? .expense
             }
             totalExpense = split.expense
             totalIncome  = split.income
             loadError = nil
+            #if DEBUG
+            let aaPlaceholderCount = filtered.filter { $0.sourceKind == .aaSettlement }.count
+            print("[Records-Reload] ledgerId=\(ledgerId) all=\(all.count) filtered=\(filtered.count) groups=\(groups.count) aaPlaceholders=\(aaPlaceholderCount) ym=\(selectedYearMonth.map { "\($0.year)-\($0.month)" } ?? "nil")")
+            for r in filtered where r.sourceKind == .aaSettlement {
+                print("[Records-Reload]   aaPH id=\(r.id) amount=\(r.amount) note=\(r.note ?? "") occurredAt=\(r.occurredAt) status=\(r.settlementStatus?.rawValue ?? "nil")")
+            }
+            #endif
         } catch {
             loadError = error.localizedDescription
+        }
+    }
+
+    /// 行级标识：用于 RecordRow 渲染左侧"AA"徽标 + RecordsListView 决定点击行为
+    /// 方案 C1：个人账单只可能见到"占位"流水，不再有 AA 原始流水。
+    func aaInfo(for record: Record) -> RecordAABadge? {
+        // 仅占位记录会有 badge。普通流水 (sourceKind == .normal) 一律 nil。
+        guard record.sourceKind == .aaSettlement,
+              let aaId = record.aaSettlementId, !aaId.isEmpty else {
+            return nil
+        }
+        let name = aaLedgerNameById[aaId] ?? "AA"
+        // settlementStatus 在写入时一定有值；为兜底兼容老数据，nil 视为 settled
+        let status = record.settlementStatus ?? .settled
+        switch status {
+        case .settled:  return .settledPlaceholder(ledgerId: aaId, ledgerName: name)
+        case .settling: return .settlingPlaceholder(ledgerId: aaId, ledgerName: name)
         }
     }
 
@@ -171,5 +217,27 @@ struct YearMonth: Equatable, Hashable {
     static var current: YearMonth {
         let c = Calendar.current.dateComponents([.year, .month], from: Date())
         return YearMonth(year: c.year ?? 2026, month: c.month ?? 1)
+    }
+}
+
+// MARK: - RecordAABadge
+
+/// 单条流水的 AA 状态标记（方案 C1）：仅用于"个人账本上的 AA 占位"渲染与点击跳转。
+/// AA 原始流水现在只存在于对应的 AA 账本里，不会出现在账单 Tab 个人模式列表中。
+/// - settledPlaceholder：sourceKind == .aaSettlement 且 settlementStatus == .settled
+///   → 紫色"AA·已结算"徽标
+/// - settlingPlaceholder：sourceKind == .aaSettlement 且 settlementStatus == .settling
+///   → 橙色"AA·结算中"徽标
+/// 两者点击都跳转到对应 AA 账本详情页（只读语义；编辑要去 AA 详情页内对原始流水操作）。
+enum RecordAABadge: Equatable {
+    case settledPlaceholder(ledgerId: String, ledgerName: String)
+    case settlingPlaceholder(ledgerId: String, ledgerName: String)
+
+    /// 跳转目标 ledgerId（两种 case 都带）。
+    var jumpLedgerId: String {
+        switch self {
+        case .settledPlaceholder(let id, _): return id
+        case .settlingPlaceholder(let id, _): return id
+        }
     }
 }

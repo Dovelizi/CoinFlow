@@ -120,6 +120,11 @@ enum RecordBitableMapper {
             syncAttempts: 0,
             attachmentLocalPath: nil,
             attachmentRemoteToken: attachmentToken,
+            // M11 AA 分账：飞书侧不存储 aa_settlement_id（按"忽略未识别字段"策略）。
+            // 远端拉回的流水统一视为普通 personal 流水；本地若曾把同一 record 标记为
+            // AA 回写流水，这次拉取会被 RemoteRecordPuller 用 remoteId 命中已存在策略
+            // 跳过，不会覆盖本地 aaSettlementId（参见 RemoteRecordPuller 的 dedupe 逻辑）。
+            aaSettlementId: nil,
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt

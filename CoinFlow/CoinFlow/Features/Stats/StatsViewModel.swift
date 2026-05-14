@@ -161,6 +161,8 @@ final class StatsViewModel: ObservableObject {
             categoriesById = Dictionary(uniqueKeysWithValues: cats.map { ($0.id, $0) })
 
             // 2) 拉记录（最近 18 个月，支撑年度 + 同比）
+            // 方案 C1：仅统计个人账本（ledgerId == default，含 AA 净额占位），
+            // 不含 AA 账本原始流水；与首页/账单 Tab 口径一致。
             let cal = Calendar.current
             let now = Date()
             let from = cal.date(byAdding: .month, value: -17, to: now) ?? now

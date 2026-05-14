@@ -25,6 +25,7 @@ protocol RecordRepository {
     /// 重新 INSERT 回本地；用户需在点击"仅删除本地"时自行接受此行为。
     func hardDelete(id: String) throws
     func find(id: String) throws -> Record?
+    func findByAASettlementId(_ aaSettlementId: String) throws -> [Record]
     func list(_ query: RecordQuery) throws -> [Record]
     func pendingSync(limit: Int) throws -> [Record]
 
@@ -65,7 +66,8 @@ final class SQLiteRecordRepository: RecordRepository {
     voice_session_id, missing_fields, merchant_channel,
     sync_status, remote_id, last_sync_error, sync_attempts,
     attachment_local_path, attachment_remote_token,
-    created_at, updated_at, deleted_at
+    created_at, updated_at, deleted_at,
+    aa_settlement_id, source_kind, settlement_status
     """
 
     // MARK: - Insert
@@ -73,7 +75,7 @@ final class SQLiteRecordRepository: RecordRepository {
     func insert(_ record: Record) throws {
         let sql = """
         INSERT INTO record (\(Self.columns))
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         try db.withHandle { handle in
             let stmt = try PreparedStatement(sql: sql, handle: handle)
@@ -94,7 +96,8 @@ final class SQLiteRecordRepository: RecordRepository {
           voice_session_id = ?, missing_fields = ?, merchant_channel = ?,
           sync_status = ?, remote_id = ?, last_sync_error = ?, sync_attempts = ?,
           attachment_local_path = ?, attachment_remote_token = ?,
-          updated_at = ?, deleted_at = ?
+          updated_at = ?, deleted_at = ?,
+          aa_settlement_id = ?, source_kind = ?, settlement_status = ?
         WHERE id = ?;
         """
         try db.withHandle { handle in
@@ -121,7 +124,10 @@ final class SQLiteRecordRepository: RecordRepository {
             stmt.bind(20, record.attachmentRemoteToken)
             stmt.bind(21, Date())             // updated_at = now
             stmt.bind(22, record.deletedAt)
-            stmt.bind(23, record.id)
+            stmt.bind(23, record.aaSettlementId)
+            stmt.bind(24, record.sourceKind.rawValue)
+            stmt.bind(25, record.settlementStatus?.rawValue)
+            stmt.bind(26, record.id)
             try stmt.stepDone()
         }
         RecordChangeNotifier.broadcast(recordIds: [record.id])
@@ -183,6 +189,21 @@ final class SQLiteRecordRepository: RecordRepository {
                 return Self.decode(stmt)
             }
             return nil
+        }
+    }
+
+    /// M11：查找同一 AA Ledger 下所有回写生成的 record（位于 default-ledger、
+    /// 携带 aa_settlement_id 的收入/支出流水）。软删行也返回，由调用方决定是否过滤。
+    func findByAASettlementId(_ aaSettlementId: String) throws -> [Record] {
+        let sql = "SELECT \(Self.columns) FROM record WHERE aa_settlement_id = ? ORDER BY occurred_at DESC;"
+        return try db.withHandle { handle -> [Record] in
+            let stmt = try PreparedStatement(sql: sql, handle: handle)
+            stmt.bind(1, aaSettlementId)
+            var out: [Record] = []
+            while try stmt.hasNext() {
+                out.append(Self.decode(stmt))
+            }
+            return out
         }
     }
 
@@ -432,6 +453,9 @@ final class SQLiteRecordRepository: RecordRepository {
         stmt.bind(22, r.createdAt)
         stmt.bind(23, r.updatedAt)
         stmt.bind(24, r.deletedAt)
+        stmt.bind(25, r.aaSettlementId)
+        stmt.bind(26, r.sourceKind.rawValue)
+        stmt.bind(27, r.settlementStatus?.rawValue)
     }
 
     private static func decode(_ s: PreparedStatement) -> Record {
@@ -457,6 +481,9 @@ final class SQLiteRecordRepository: RecordRepository {
             syncAttempts: s.columnInt(18),
             attachmentLocalPath: s.columnTextOrNil(19),
             attachmentRemoteToken: s.columnTextOrNil(20),
+            aaSettlementId: s.columnTextOrNil(24),
+            sourceKind: RecordSourceKind(rawValue: s.columnText(25)) ?? .normal,
+            settlementStatus: s.columnTextOrNil(26).flatMap(AASettlementStatus.init(rawValue:)),
             createdAt: s.columnDate(21),
             updatedAt: s.columnDate(22),
             deletedAt: s.columnDateOrNil(23)

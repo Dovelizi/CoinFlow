@@ -10,10 +10,11 @@ import SwiftUI
 
 struct NewRecordModal: View {
 
-    @StateObject private var vm = NewRecordViewModel()
+    @StateObject private var vm: NewRecordViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showCategoryPicker = false
     @State private var showTimePicker = false
+    @State private var showLedgerPicker = false
 
     /// 金额拦截彩蛋 toast：当 vm.amountClampedAt 变化时弹一次。
     /// 文案是金额超限的轻吐槽，用 DispatchWorkItem 控制 1.6s 自动消失。
@@ -23,8 +24,18 @@ struct NewRecordModal: View {
     /// 保存成功回调（父视图据此关闭并可选择展示 toast）
     let onSaved: ((Record) -> Void)?
 
-    init(onSaved: ((Record) -> Void)? = nil) {
+    /// M11：外部锁定的账本 id（不为 nil 时，账本行不可点击与切换）。
+    /// AA 分账详情页点击"+ 添加流水"时传入当前 AA 账本 id，
+    /// 锁定后用户不能在该 modal 里再切换为个人账户或其他 AA 账本。
+    let lockedLedgerId: String?
+
+    init(lockedLedgerId: String? = nil,
+         onSaved: ((Record) -> Void)? = nil) {
+        self.lockedLedgerId = lockedLedgerId
         self.onSaved = onSaved
+        _vm = StateObject(wrappedValue: NewRecordViewModel(
+            ledgerId: lockedLedgerId ?? DefaultSeeder.defaultLedgerId
+        ))
     }
 
     var body: some View {
@@ -63,6 +74,14 @@ struct NewRecordModal: View {
             timePickerSheet
                 .presentationDetents([.height(360)])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showLedgerPicker) {
+            AALedgerPickerSheet(
+                currentSelection: vm.selectedAALedger,
+                onPick: { picked in vm.selectedAALedger = picked }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
     }
 
@@ -319,13 +338,26 @@ struct NewRecordModal: View {
 
             innerDivider
 
-            // 账本（M3.2 单账本，不可改 → 不显示 chevron）
-            fieldRowContent(
-                icon: "book",
-                label: "账本",
-                value: "我的账本",
-                showChevron: false
-            )
+            // 账本（M11：点击弹出 AA 分账选择器；默认个人账户）
+            // 锁定模式下（如从 AA 详情页"+ 添加流水"进入）账本不可点击与切换。
+            if lockedLedgerId == nil {
+                Button { showLedgerPicker = true } label: {
+                    fieldRowContent(
+                        icon: vm.selectedAALedger == nil ? "book" : "person.2.fill",
+                        label: "账本",
+                        value: vm.selectedAALedger?.name ?? "个人账户",
+                        showChevron: true
+                    )
+                }
+                .buttonStyle(.pressableRow)
+            } else {
+                fieldRowContent(
+                    icon: "person.2.fill",
+                    label: "账本",
+                    value: lockedLedgerName,
+                    showChevron: false
+                )
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
@@ -372,6 +404,16 @@ struct NewRecordModal: View {
         f.locale = Locale(identifier: "zh_CN")
         f.dateFormat = "M月d日 HH:mm"
         return f.string(from: vm.occurredAt)
+    }
+
+    /// 锁定账本名（AA 详情页进入时传入 lockedLedgerId）
+    private var lockedLedgerName: String {
+        guard let lid = lockedLedgerId else { return "个人账户" }
+        if lid == DefaultSeeder.defaultLedgerId { return "我的账本" }
+        if let l = try? SQLiteLedgerRepository.shared.find(id: lid) {
+            return l.name
+        }
+        return "AA 分账"
     }
 
     // MARK: - Time picker sheet (wheel)
