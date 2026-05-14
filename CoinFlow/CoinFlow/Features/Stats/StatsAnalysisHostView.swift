@@ -59,24 +59,28 @@ struct StatsEmptyState: View {
 
 /// 8 子视图通用 NavBar：返回按钮 + 双行标题 + 可选右侧 icon。
 /// 当 `trailingAction` 提供时，右侧 icon 变成可点击按钮；不提供则保持装饰态（向后兼容旧调用点）。
+/// `showsBackButton` 默认 true 保持原行为；当作为 Tab 根视图嵌入（无栈可返回）时显式传 false 以隐藏左侧 chevron。
 struct StatsSubNavBar: View {
     let title: String
     let subtitle: String
     let trailingIcon: String?
     let trailingAction: (() -> Void)?
     let trailingAccessibility: String?
+    let showsBackButton: Bool
     @Environment(\.dismiss) private var dismiss
 
     init(title: String,
          subtitle: String,
          trailingIcon: String? = nil,
          trailingAction: (() -> Void)? = nil,
-         trailingAccessibility: String? = nil) {
+         trailingAccessibility: String? = nil,
+         showsBackButton: Bool = true) {
         self.title = title
         self.subtitle = subtitle
         self.trailingIcon = trailingIcon
         self.trailingAction = trailingAction
         self.trailingAccessibility = trailingAccessibility
+        self.showsBackButton = showsBackButton
     }
 
     var body: some View {
@@ -90,17 +94,19 @@ struct StatsSubNavBar: View {
                     .foregroundStyle(Color.inkTertiary)
             }
             HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(Color.inkPrimary)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
+                if showsBackButton {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Color.inkPrimary)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.pressableSoft)
+                    .accessibilityLabel("返回")
                 }
-                .buttonStyle(.pressableSoft)
-                .accessibilityLabel("返回")
                 Spacer()
                 if let trailingIcon {
                     if let trailingAction {

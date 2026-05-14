@@ -433,10 +433,14 @@ struct RecordsListView: View {
                         }
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                        Button(role: .destructive) {
-                            pendingDeleteRecord = record
-                        } label: {
-                            Label("删除", systemImage: "trash")
+                        // AA 占位流水（aaSettlementId 非空）只读：不允许手动删除，
+                        // 其生命周期跟随 AA 账本——删除 AA 账本时会联动软删占位流水。
+                        if (record.aaSettlementId ?? "").isEmpty {
+                            Button(role: .destructive) {
+                                pendingDeleteRecord = record
+                            } label: {
+                                Label("删除", systemImage: "trash")
+                            }
                         }
                     }
                     // M7 [01-6]：leading swipe → AA 结算（V2 真开放；当前显示"即将上线"）

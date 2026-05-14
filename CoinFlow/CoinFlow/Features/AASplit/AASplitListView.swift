@@ -30,7 +30,9 @@ struct AASplitListView: View {
                 subtitle: subtitle,
                 trailingIcon: "plus.circle.fill",
                 trailingAction: { showCreate = true },
-                trailingAccessibility: "新建分账"
+                trailingAccessibility: "新建分账",
+                // Tab 嵌入场景无栈可返回，不渲染左上 chevron.left；独立路由（StatsHub.aa 进入）保留返回。
+                showsBackButton: !embedded
             )
             filterTabs
             // 改用 List 承载，以获得原生 .swipeActions 左滑删除能力。
@@ -283,13 +285,16 @@ struct AASplitListDestination: Hashable {
 }
 
 /// 嵌入感知的 nav modifier：
-/// - embedded = false（独立路由）：保留原 .navigationBarHidden + .hideTabBar 行为
-/// - embedded = true（被账单 Tab 嵌入）：外层负责 navBar 与 TabBar，这里全部跳过
+/// - 顶部统一隐藏系统 nav bar：页面自绘 `StatsSubNavBar` 已含标题/副标题/右上 + 入口，
+///   不依赖系统 nav bar；不隐藏会让外层 NavigationStack 默认露出"<"返回角标。
+/// - embedded = false（独立路由）：额外 .hideTabBar() 隐藏底部 TabBar
+/// - embedded = true（被 Tab 嵌入）：保留 TabBar 可见
 private struct EmbedAwareNavModifier: ViewModifier {
     let embedded: Bool
     func body(content: Content) -> some View {
         if embedded {
             content
+                .navigationBarHidden(true)
         } else {
             content
                 .navigationBarHidden(true)

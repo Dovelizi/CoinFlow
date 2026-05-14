@@ -156,6 +156,14 @@ final class AppState: ObservableObject {
         //     sourceKind != .aaSettlement 的旧记录）。幂等：完成后写 flag，下次启动跳过。
         AAMigrationsM12.cleanupLegacyWritebacksIfNeeded()
 
+        // 2.2 M13 一次性迁移：清理"AA 账本已被软删但占位流水仍存在"的孤儿占位。
+        //     旧版 AASplitListViewModel.softDelete 没联动占位删除，留下了指向已删账本的占位。
+        //     幂等：完成后写 flag；如清理了任何条目则广播刷新，让账单列表立刻反映。
+        let m13Removed = AAMigrationsM13.cleanupOrphanPlaceholdersIfNeeded()
+        if m13Removed > 0 {
+            RecordChangeNotifier.broadcast(recordIds: [])
+        }
+
         // 2.5 首次启动日期（Dark Glass 设置页"加入 N 天"副标题数据源）
         // - 只在首次启动时写入；后续启动不覆盖
         // - 无论 Seed 成功与否都尝试写入（读到 DB 就说明 bootstrap 步骤 1 已通过）

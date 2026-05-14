@@ -230,14 +230,15 @@ final class AASplitService {
         try memberRepo.update(rev)
     }
 
-    // MARK: - 6.5 删除整个 AA 账本（M12：级联软删 + 占位清理）
+    // MARK: - 6.5 删除整个 AA 账本（M12：级联软删 + 占位联动清理）
 
-    /// 删除一个 AA 账本：在事务内级联软删本账本下的 record / member / share 以及 ledger 自身。
+    /// 删除一个 AA 账本：在事务内级联软删本账本下的 record / member / share / ledger 自身，
+    /// 并联动软删个人账本上的占位流水（sourceKind=.aaSettlement，aaSettlementId=本账本）。
     ///
-    /// 注意：**保留**个人账本上的占位（sourceKind=.aaSettlement，aaSettlementId=本账本）。
-    /// 占位代表用户已经发生过的一笔历史消费（已回写到个人账单），删除 AA 账本本身
-    /// 不应连带抹掉用户的个人账单流水。删除后占位仍以 aaSettlementId 指向已被软删
-    /// 的 ledger，UI 端在 RecordDetailSheet 已有"该分账已删除"兜底文案。
+    /// 设计：占位流水是"AA 账本在个人账单上的投影"，与 AA 账本同生命周期。
+    /// AA 账本删除 ⇒ 占位也消失，避免在个人账单留下指向已删账本的孤儿流水。
+    /// 用户在个人账单上看到的占位流水也是只读的（不允许手动删除/编辑），
+    /// 唯一的合法清理入口就是删除其源 AA 账本。
     ///
     /// - 仅写 deleted_at；同步队列会把这些"带 deletedAt 的行"推到云端达成软删。
     func deleteSplit(ledgerId: String) throws {
@@ -252,6 +253,9 @@ final class AASplitService {
         // 收集要删除的 AA 内部流水（含未删行）
         let aaRecords = try recordRepo.list(RecordQuery(ledgerId: ledgerId, limit: 5000))
         let members = try memberRepo.list(ledgerId: ledgerId)
+        // 收集占位流水 id 用于事务后广播刷新（与 AA 内部 record 一并通知 UI）
+        let placeholders = try recordRepo.findByAASettlementId(ledgerId)
+            .filter { $0.deletedAt == nil && $0.sourceKind == .aaSettlement }
 
         try execTransaction {
             // 1) 删 share
@@ -266,12 +270,15 @@ final class AASplitService {
             for r in aaRecords where r.deletedAt == nil {
                 try recordRepo.delete(id: r.id)
             }
-            // 4) 软删 ledger 自身（占位流水保留，不动）
+            // 4) 软删个人账本上的占位流水（M12 改：联动而非保留）
+            try self.softDeletePlaceholder(ledgerId: ledgerId)
+            // 5) 软删 ledger 自身
             try ledgerRepo.delete(id: ledgerId)
         }
 
-        // 通知列表 / 账单 / 统计页刷新（仅含 AA 内部 record id；占位本次未变）
-        let allIds = aaRecords.map { $0.id }
+        // 通知列表 / 账单 / 统计页刷新（含 AA 内部 record id 与占位 id）
+        var allIds = aaRecords.map { $0.id }
+        allIds.append(contentsOf: placeholders.map { $0.id })
         RecordChangeNotifier.broadcast(recordIds: allIds)
         SyncTrigger.fire(reason: "aa.deleteSplit")
     }

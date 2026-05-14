@@ -116,20 +116,20 @@ struct StatsAABalanceView: View {
         )
     }
 
-    // MARK: - 应付应收（基于已完成 AA 的回写流水）
+    // MARK: - 已结算 · 本月（账单数 + 个人分账支付金额）
 
     private var balanceCard: some View {
         VStack(alignment: .leading, spacing: NotionTheme.space3) {
-            Text("已结算累计")
+            Text("已结算 · \(vm.monthLabel)")
                 .font(NotionFont.bodyBold())
                 .foregroundStyle(Color.inkPrimary)
             HStack(spacing: NotionTheme.space5) {
-                balanceColumn(title: "已收",
-                              amount: vm.settledIncome,
+                balanceColumn(title: "已结算账单",
+                              value: "\(vm.completedCount) 个",
                               color: Color.statusSuccess)
                 Divider().frame(height: 36)
-                balanceColumn(title: "已付",
-                              amount: vm.settledExpense,
+                balanceColumn(title: "本月个人支付",
+                              value: "¥" + StatsFormat.decimalGrouped(vm.monthlySettledPaid),
                               color: Color.dangerRed)
             }
             .padding(NotionTheme.space5)
@@ -138,20 +138,20 @@ struct StatsAABalanceView: View {
                 RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
                     .fill(Color.hoverBg.opacity(0.5))
             )
-            Text("数据来源：已完成 AA 账本回写到个人账单的流水")
+            Text("数据来源：已完成 AA 账本回写到个人账单的流水（本月 occurredAt）")
                 .font(NotionFont.micro())
                 .foregroundStyle(Color.inkTertiary)
         }
     }
 
     private func balanceColumn(title: String,
-                               amount: Decimal,
+                               value: String,
                                color: Color) -> some View {
         VStack(spacing: 4) {
             Text(title)
                 .font(NotionFont.micro())
                 .foregroundStyle(Color.inkTertiary)
-            Text("¥" + StatsFormat.decimalGrouped(amount))
+            Text(value)
                 .font(.system(size: 20, weight: .semibold, design: .rounded).monospacedDigit())
                 .foregroundStyle(color)
         }
@@ -244,8 +244,14 @@ final class StatsAABalanceViewModel: ObservableObject {
     @Published private(set) var completedCount: Int = 0
     @Published private(set) var completedAmount: Decimal = 0
 
-    @Published private(set) var settledIncome: Decimal = 0
-    @Published private(set) var settledExpense: Decimal = 0
+    /// 当前月（用于"本月个人支付"统计；锁定为系统当前月，与 StatsHub 其他卡口径一致）
+    private let month: YearMonth = .current
+    /// 当月所有已完成 AA 账本回写到个人账本的占位流水中、kind=expense、
+    /// 且 occurredAt 落在当前月的金额合计（= "我"在本月各次结算中的应分摊总和）。
+    @Published private(set) var monthlySettledPaid: Decimal = 0
+
+    /// 卡片标题用："YYYY-M月"（与系统 Calendar 当前月一致）
+    var monthLabel: String { "\(month.year)-\(month.month)月" }
 
     @Published private(set) var recentLedgers: [AASplitListItem] = []
     @Published private(set) var loadError: String?
@@ -295,27 +301,26 @@ final class StatsAABalanceViewModel: ObservableObject {
             completedCount  = completed.count
             completedAmount = completed.reduce(Decimal(0)) { $0 + $1.totalAmount }
 
-            // 应付应收：扫所有已 completed 账本，对应 default ledger 上带 aaSettlementId 的回写流水
+            // 本月个人支付：扫所有已 completed 账本，对应 default ledger 上带 aaSettlementId 的回写流水，
+            // 仅统计 kind=expense 且 occurredAt 落在当前月的金额（= "我"在本月结算中的应分摊总和）。
             let categories = (try? SQLiteCategoryRepository.shared
                 .list(kind: nil, includeDeleted: true)) ?? []
             let catKindById: [String: CategoryKind] = Dictionary(
                 uniqueKeysWithValues: categories.map { ($0.id, $0.kind) }
             )
-            var income: Decimal = 0
-            var expense: Decimal = 0
+            let curInterval = month.dateInterval(in: Calendar.current)
+            var monthlyPaid: Decimal = 0
             for c in completed {
                 let writebacks = (try? SQLiteRecordRepository.shared
                     .findByAASettlementId(c.ledger.id)) ?? []
-                for r in writebacks where r.deletedAt == nil {
-                    switch catKindById[r.categoryId] {
-                    case .income:  income  += r.amount
-                    case .expense: expense += r.amount
-                    case .none:    break
-                    }
+                for r in writebacks
+                where r.deletedAt == nil
+                   && catKindById[r.categoryId] == .expense
+                   && curInterval.contains(r.occurredAt) {
+                    monthlyPaid += r.amount
                 }
             }
-            settledIncome = income
-            settledExpense = expense
+            monthlySettledPaid = monthlyPaid
 
             // 最近活跃前 5（按最后流水时间倒序，没有流水的排后面）
             recentLedgers = items.sorted { a, b in

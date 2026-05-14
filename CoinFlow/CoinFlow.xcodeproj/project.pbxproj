@@ -39,6 +39,7 @@
 		325046108AE4CC0D9B867BFE /* AmountFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C79ACD02BCBED76F41058F55 /* AmountFormatter.swift */; };
 		326F677F4011A1889A4F86C9 /* VoiceSummaryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1B2AA3F5A2A30A66261BBD /* VoiceSummaryView.swift */; };
 		36B8B4DCD68CC47E6FFF70AD /* NewRecordModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0EB64A33E53851A442FD47CC /* NewRecordModal.swift */; };
+		AA02F00100000022PYRPK02 /* AAPayerPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01F00100000022PYRPK01 /* AAPayerPickerSheet.swift */; };
 		36C0018518928613F40C25E8 /* LLMTextClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D28FE88A0C8A5B4B64245FD9 /* LLMTextClient.swift */; };
 		37D63DF6318515CDDD842F89 /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6AD534CFF0EF5EC698816C9 /* MainTabView.swift */; };
 		37F59ADBF280A4C5A35A7F5F /* BillsSummary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 493B136792F95CCD155B62FD /* BillsSummary.swift */; };
@@ -115,6 +116,7 @@
 		AA02F00100000018AASES02 /* AAShareEditSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01F00100000018AASES01 /* AAShareEditSection.swift */; };
 		AA02F00100000019AAPCS02 /* AAPaymentConfirmSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01F00100000019AAPCS01 /* AAPaymentConfirmSection.swift */; };
 		AA02F00100A0M12CL02 /* AAMigrationsM12.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01F00100A0M12CL01 /* AAMigrationsM12.swift */; };
+		AA02F00100A0M13CL02 /* AAMigrationsM13.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01F00100A0M13CL01 /* AAMigrationsM13.swift */; };
 		AE4176DFED01E51168EC2168 /* DefaultSeeder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0264EFD4B8AED1B8DE68E014 /* DefaultSeeder.swift */; };
 		AEAE9B59F1CC150B487CA276 /* ASRRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F99F98D434F0D99EF1187960 /* ASRRouter.swift */; };
 		AECAF916AB837132895890AB /* SummaryBitableMapper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63B09F4B38D54EEFFA24E822 /* SummaryBitableMapper.swift */; };
@@ -179,6 +181,7 @@
 		004462DF6CE79486AD796C03 /* DateGrouping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DateGrouping.swift; sourceTree = "<group>"; };
 		0264EFD4B8AED1B8DE68E014 /* DefaultSeeder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DefaultSeeder.swift; sourceTree = "<group>"; };
 		AA01F00100A0M12CL01 /* AAMigrationsM12.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AAMigrationsM12.swift; sourceTree = "<group>"; };
+		AA01F00100A0M13CL01 /* AAMigrationsM13.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AAMigrationsM13.swift; sourceTree = "<group>"; };
 		03DEA0DB6B0A4BD85DCEB533 /* ASREngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ASREngine.swift; sourceTree = "<group>"; };
 		03E06D546124ACE477E7ED26 /* VoiceParsingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceParsingView.swift; sourceTree = "<group>"; };
 		04A3EB39E9E2A4DCA3D77B52 /* StatsGaugeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsGaugeView.swift; sourceTree = "<group>"; };
@@ -187,6 +190,7 @@
 		0C089C753F626ABE759A6EF9 /* FeishuTokenManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FeishuTokenManager.swift; sourceTree = "<group>"; };
 		0D02415C3DB0F2203FDB1C95 /* BillsLLMParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BillsLLMParser.swift; sourceTree = "<group>"; };
 		0EB64A33E53851A442FD47CC /* NewRecordModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewRecordModal.swift; sourceTree = "<group>"; };
+		AA01F00100000022PYRPK01 /* AAPayerPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AAPayerPickerSheet.swift; sourceTree = "<group>"; };
 		1804193E693ADE1D5EBAF169 /* AppConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConfig.swift; sourceTree = "<group>"; };
 		18A004BA2FB5BD5300E377B1 /* AASplitServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AASplitServiceTests.swift; sourceTree = "<group>"; };
 		18B5CB675F0BAB554C25C7B6 /* CategoryPickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryPickerSheet.swift; sourceTree = "<group>"; };
@@ -405,6 +409,7 @@
 			children = (
 				0264EFD4B8AED1B8DE68E014 /* DefaultSeeder.swift */,
 				AA01F00100A0M12CL01 /* AAMigrationsM12.swift */,
+				AA01F00100A0M13CL01 /* AAMigrationsM13.swift */,
 			);
 			path = Seed;
 			sourceTree = "<group>";
@@ -543,6 +548,7 @@
 			children = (
 				18B5CB675F0BAB554C25C7B6 /* CategoryPickerSheet.swift */,
 				0EB64A33E53851A442FD47CC /* NewRecordModal.swift */,
+				AA01F00100000022PYRPK01 /* AAPayerPickerSheet.swift */,
 				4E75AC92D58769110A669BF5 /* NewRecordViewModel.swift */,
 			);
 			path = NewRecord;
@@ -931,6 +937,7 @@
 				C01F11A0000000000000A001 /* RemoteAttachmentLoader.swift in Sources */,
 				AE4176DFED01E51168EC2168 /* DefaultSeeder.swift in Sources */,
 				AA02F00100A0M12CL02 /* AAMigrationsM12.swift in Sources */,
+				AA02F00100A0M13CL02 /* AAMigrationsM13.swift in Sources */,
 				BC7B914C7D889CDD7B3B9D2E /* RecordChangeNotifier.swift in Sources */,
 				AA02F00100000010AASVC02 /* AASplitService.swift in Sources */,
 				AA02F00100000011AAPCK02 /* AALedgerPickerSheet.swift in Sources */,
@@ -961,6 +968,7 @@
 				6950A529E849BDB5378BE16C /* RecordGridView.swift in Sources */,
 				E34FAB4C940E50EDD216D97E /* NewRecordViewModel.swift in Sources */,
 				36B8B4DCD68CC47E6FFF70AD /* NewRecordModal.swift in Sources */,
+				AA02F00100000022PYRPK02 /* AAPayerPickerSheet.swift in Sources */,
 				FD29556B7667EB508C26B1CD /* CategoryPickerSheet.swift in Sources */,
 				1ED1AC517CC5E02D6D076757 /* RecordDetailViewModel.swift in Sources */,
 				4B5EBDCD51901FCA3742159B /* RecordDetailSheet.swift in Sources */,

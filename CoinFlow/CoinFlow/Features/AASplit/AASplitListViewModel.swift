@@ -98,41 +98,16 @@ final class AASplitListViewModel: ObservableObject {
         }
     }
 
-    /// 删除一个 AA 账本，级联清理与之关联的所有数据：
-    /// 1. AA 账本本体（ledger 软删）
-    /// 2. 该账本下所有内部流水（record.ledgerId == ledgerId）
-    /// 3. 该账本下所有分账成员（aa_member）
+    /// 删除一个 AA 账本：直接委托给 AASplitService.deleteSplit，
+    /// 由 Service 在事务内级联软删 share / member / 内部 record / 个人账单占位 / ledger 本身，
+    /// 并广播 RecordChangeNotifier 触发账单列表 / 统计 / 详情刷新。
     ///
-    /// 注意：**保留**已经回写到个人账单的占位流水（record.aaSettlementId == ledgerId
-    /// 且 sourceKind == .aaSettlement）。从用户视角来看，这条占位代表了一笔已经
-    /// 完成的历史消费，删除分账账本本身不应连带抹掉用户在个人账单里的支出记录。
-    ///
-    /// 全部走"软删"语义，与既有 delete 接口保持一致；同步层据 deleted_at 做 tombstone。
+    /// 设计：占位流水是 AA 账本在个人账单上的"投影"，与 AA 账本同生命周期；
+    /// 删除 AA 账本必须联动软删占位，避免出现指向已删账本的孤儿流水。
+    /// 联动逻辑只在 AASplitService.deleteSplit 中维护一份，本入口只做委托。
     func softDelete(id: String) {
         do {
-            // 1) 收集 AA 账本内部流水（仅删这些，不动占位）
-            var recordIdsToDelete: Set<String> = []
-            let internalRecords = try SQLiteRecordRepository.shared
-                .list(RecordQuery(ledgerId: id, limit: 5000))
-            for r in internalRecords where r.deletedAt == nil {
-                recordIdsToDelete.insert(r.id)
-            }
-
-            for rid in recordIdsToDelete {
-                try? SQLiteRecordRepository.shared.delete(id: rid)
-            }
-
-            // 2) 成员
-            let members = try SQLiteAAMemberRepository.shared.list(ledgerId: id)
-            for m in members {
-                try? SQLiteAAMemberRepository.shared.softDelete(id: m.id)
-            }
-
-            // 3) 账本本体
-            try SQLiteLedgerRepository.shared.delete(id: id)
-
-            // 兜底广播：确保订阅 .recordsDidChange 的 VM（账单列表 / 统计 / 详情）立即刷新
-            RecordChangeNotifier.broadcast(recordIds: Array(recordIdsToDelete))
+            try AASplitService.shared.deleteSplit(ledgerId: id)
         } catch {
             self.loadError = "删除失败：\(error.localizedDescription)"
         }

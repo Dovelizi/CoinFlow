@@ -91,12 +91,13 @@ struct AASplitDetailView: View {
             Button("取消", role: .cancel) {}
             Button("开始结算") {
                 do {
-                    // 单用户语义：账本下的流水都是"我"记的，开始结算时默认把"我"作为参与成员加入。
-                    // 关键时序：必须在 startSettlement 之前加入 me，
+                    // M12：开始结算前自动把"曾经支付过"的人和"我"全部加为分账成员。
+                    // - "我"：始终作为成员加入（即使我没出钱，方便后续调整分摊）
+                    // - 其他 payer：扫描本账本所有未删流水的 payerUserId，未在成员表的全部补一条
+                    // 关键时序：必须在 startSettlement 之前完成，
                     // 这样 startSettlement 内部首次 recomputePlaceholder(.settling) 计算
                     // mineShareSum 时就能算到我的份额，一次到位写出占位流水。
-                    // 若是代记场景（自己不参与），用户可在成员列表里手动删除"我"。
-                    try? vm.addCurrentUserAsMember()
+                    try? vm.enrollPayersAsMembers()
                     try vm.startSettlement()
                 } catch {
                     showCompleteError = error.localizedDescription
@@ -596,7 +597,9 @@ struct AASplitDetailView: View {
 
     @ViewBuilder
     private var completeButton: some View {
-        let pendingCount = vm.members.filter { $0.status == .pending && vm.owe(of: $0.id) > 0 }.count
+        // M12：与 AAPaymentConfirmSection 同详，按 net = 应付 - 实付 计算。
+        // 只有「net > 0 且 status == pending」的成员会阻塞完成结算。
+        let pendingCount = vm.members.filter { vm.netOwe(of: $0.id) > 0 && $0.status == .pending }.count
         let enabled = pendingCount == 0 && !vm.members.isEmpty
         Button {
             do {
@@ -622,7 +625,7 @@ struct AASplitDetailView: View {
     // “完成结算”按钮下方的提示文案，从按钮内部上提，保证双按钮高度一致。
     @ViewBuilder
     private var completeHintText: some View {
-        let pendingCount = vm.members.filter { $0.status == .pending && vm.owe(of: $0.id) > 0 }.count
+        let pendingCount = vm.members.filter { vm.netOwe(of: $0.id) > 0 && $0.status == .pending }.count
         let enabled = pendingCount == 0 && !vm.members.isEmpty
         if !enabled {
             Text(pendingCount > 0 ? "还有 \(pendingCount) 位未确认支付" : "请先添加成员")

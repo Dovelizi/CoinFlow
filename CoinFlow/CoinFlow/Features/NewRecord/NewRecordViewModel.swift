@@ -44,6 +44,15 @@ final class NewRecordViewModel: ObservableObject {
     /// `aaStatus = .recording` 的账本。为 nil 时走个人账户（default-ledger）。
     @Published var selectedAALedger: Ledger?
 
+    /// AA 流水的支付人（payer）—— 仅在选中 AA 账本时生效。
+    /// - 默认 = "我"（`AAOwner.memberId(in: ledgerId)`）
+    /// - 用户可在新建流水页切换为该账本下任一已有成员，或新增成员（输入昵称）
+    /// - 保存时写入到 `Record.payerUserId`，供结算阶段反推"谁实际付了多少"
+    @Published var selectedPayerMemberId: String?
+
+    /// 当前 AA 账本下可选的 payer 列表（成员表的活动行，"我"必定在首位）
+    @Published private(set) var availablePayers: [AAMember] = []
+
     @Published private(set) var saveError: String?
     @Published private(set) var isSaving: Bool = false
 
@@ -61,6 +70,74 @@ final class NewRecordViewModel: ObservableObject {
     init(ledgerId: String = DefaultSeeder.defaultLedgerId) {
         self.ledgerId = ledgerId
         loadCategories()
+        // 若初始 ledgerId 直接就是一个 AA 账本（lockedLedgerId 路径，从 AA 详情页"+ 添加流水"进入），
+        // 立即把它当作 selectedAALedger 装载，初始化 payer 列表和默认值（"我"）。
+        if let l = try? SQLiteLedgerRepository.shared.find(id: ledgerId), l.type == .aa {
+            self.selectedAALedger = l
+            refreshPayersForCurrentAA()
+        }
+    }
+
+    /// 当 selectedAALedger 切换或初始化时由 View 层显式调用，刷新 payer 候选列表 + 默认选中"我"。
+    /// 若账本下还没有"我"这个成员，临时拼一条虚拟 "我"（id = me-<ledgerId>），保存时再真实落库。
+    func refreshPayersForCurrentAA() {
+        guard let l = selectedAALedger else {
+            availablePayers = []
+            selectedPayerMemberId = nil
+            return
+        }
+        let myId = AAOwner.memberId(in: l.id)
+        var members = (try? SQLiteAAMemberRepository.shared.list(ledgerId: l.id)) ?? []
+        if !members.contains(where: { AAOwner.isOwnerMember($0) }) {
+            let now = Date()
+            members.insert(AAMember(
+                id: myId, ledgerId: l.id, name: "我", avatarEmoji: "🙋",
+                status: .pending, paidAt: nil, sortOrder: 0,
+                createdAt: now, updatedAt: now, deletedAt: nil
+            ), at: 0)
+        }
+        availablePayers = members
+        selectedPayerMemberId = myId
+    }
+
+    /// 用户在新建流水页输入新成员昵称作为 payer。立即把该成员落库（aa_member），
+    /// 并把 `selectedPayerMemberId` 指向它。同名（活动行）则复用，不重复创建。
+    /// - Returns: 新成员或复用成员的 id；昵称非法时返回 nil
+    @discardableResult
+    func addNewPayer(name rawName: String) -> String? {
+        guard let l = selectedAALedger else { return nil }
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.count <= 20 else { return nil }
+        let existing = (try? SQLiteAAMemberRepository.shared.list(ledgerId: l.id)) ?? []
+        if let same = existing.first(where: { $0.name == trimmed && $0.deletedAt == nil }) {
+            selectedPayerMemberId = same.id
+            availablePayers = existing
+            return same.id
+        }
+        let now = Date()
+        let m = AAMember(
+            id: UUID().uuidString,
+            ledgerId: l.id,
+            name: trimmed,
+            avatarEmoji: nil,
+            status: .pending,
+            paidAt: nil,
+            sortOrder: existing.count,
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: nil
+        )
+        do {
+            try SQLiteAAMemberRepository.shared.insert(m)
+            // 重新读一遍以拿到最新顺序
+            let refreshed = try SQLiteAAMemberRepository.shared.list(ledgerId: l.id)
+            availablePayers = refreshed
+            selectedPayerMemberId = m.id
+            return m.id
+        } catch {
+            saveError = error.localizedDescription
+            return nil
+        }
     }
 
     // MARK: - Direction toggle
@@ -198,9 +275,29 @@ final class NewRecordViewModel: ObservableObject {
             }
         }
 
-        // M11 AA 分账：选中 AA 账本时覆盖 ledgerId 与 payerUserId
+        // M11 AA 分账：选中 AA 账本时覆盖 ledgerId 与 payerUserId。
+        // payerUserId 写入 AAMember.id：默认是 me-<ledgerId>（"我"在该账本下的成员 id），
+        // 用户可在 UI 上切换为账本下其他成员，或新增成员（输入昵称即时落库）。
         let resolvedLedgerId: String = selectedAALedger?.id ?? self.ledgerId
-        let resolvedPayerUserId: String? = (selectedAALedger != nil) ? AAOwner.currentUserId : nil
+        var resolvedPayerUserId: String? = nil
+        if let aa = selectedAALedger {
+            let myId = AAOwner.memberId(in: aa.id)
+            let pid = selectedPayerMemberId ?? myId
+            // 若 payer = "我" 但"我"还没作为成员落库，先补一条 me-<ledgerId>，保证
+            // payerUserId 永远是一条真实存在的 aa_member.id（结算阶段反推成员靠它）。
+            if pid == myId {
+                let existing = (try? SQLiteAAMemberRepository.shared.list(ledgerId: aa.id)) ?? []
+                if !existing.contains(where: { AAOwner.isOwnerMember($0) }) {
+                    let me = AAMember(
+                        id: myId, ledgerId: aa.id, name: "我", avatarEmoji: "🙋",
+                        status: .pending, paidAt: nil, sortOrder: 0,
+                        createdAt: now, updatedAt: now, deletedAt: nil
+                    )
+                    try? SQLiteAAMemberRepository.shared.insert(me)
+                }
+            }
+            resolvedPayerUserId = pid
+        }
 
         let record = Record(
             id: recordId,

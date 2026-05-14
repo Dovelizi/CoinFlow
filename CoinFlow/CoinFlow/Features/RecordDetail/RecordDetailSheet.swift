@@ -40,17 +40,25 @@ struct RecordDetailSheet: View {
         _vm = StateObject(wrappedValue: RecordDetailViewModel(record: record))
     }
 
+    /// 是否为 AA 占位流水（AA 分账结算后回写到个人账本的「AA 分账·已结算」记录）。
+    /// 只读语义：不可编辑金额/分类/备注/时间；不可手动删除；生命周期随 AA 账本联动。
+    private var isReadOnly: Bool {
+        if let aaId = vm.original.aaSettlementId, !aaId.isEmpty { return true }
+        return false
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: NotionTheme.space6) {
+                    if isReadOnly { readOnlyBanner }
                     amountField
                     categoryField
                     noteField
                     AttachmentPreviewSection(record: vm.original)
                     AASettlementLinkSection(record: vm.original)
                     metaInfo
-                    deleteButton
+                    if !isReadOnly { deleteButton }
                 }
                 .padding(NotionTheme.space5)
             }
@@ -85,21 +93,23 @@ struct RecordDetailSheet: View {
                         }
                     }
                 }
-                // 右上：保存（仅在有修改且输入合法时可点）
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("保存") {
-                        // 收起键盘后再 commit，避免焦点未同步到 vm 中间态的 race
-                        focusedField = nil
-                        if vm.commit() {
-                            Haptics.success()
-                            dismiss()
-                        } else {
-                            Haptics.error()
+                // 右上：保存（仅在有修改且输入合法时可点；AA 占位流水只读不显示）
+                if !isReadOnly {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("保存") {
+                            // 收起键盘后再 commit，避免焦点未同步到 vm 中间态的 race
+                            focusedField = nil
+                            if vm.commit() {
+                                Haptics.success()
+                                dismiss()
+                            } else {
+                                Haptics.error()
+                            }
                         }
+                        .font(NotionFont.bodyBold())
+                        .foregroundStyle((vm.isDirty && vm.canSave) ? Color.inkPrimary : Color.inkTertiary)
+                        .disabled(!vm.isDirty || !vm.canSave)
                     }
-                    .font(NotionFont.bodyBold())
-                    .foregroundStyle((vm.isDirty && vm.canSave) ? Color.inkPrimary : Color.inkTertiary)
-                    .disabled(!vm.isDirty || !vm.canSave)
                 }
             }
             // 键盘「完成」按钮：由 AmountTextFieldUIKit / NoteTextFieldUIKit 自身的
@@ -146,18 +156,69 @@ struct RecordDetailSheet: View {
     }
 
     /// 关闭请求统一入口：有脏改 → 弹二次确认；否则直接关闭。
+    /// 只读模式下不会产生脏改，直接关闭。
     private func attemptDismiss() {
         focusedField = nil
-        if vm.isDirty {
+        if !isReadOnly && vm.isDirty {
             showDiscardConfirm = true
         } else {
             dismiss()
         }
     }
 
+    // MARK: - Read-only banner（AA 占位流水顶部提示）
+
+    private var readOnlyBanner: some View {
+        HStack(spacing: NotionTheme.space3) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.inkSecondary)
+            Text("AA 分账回写记录仅可查看，删除对应 AA 账本后会联动移除")
+                .font(NotionFont.small())
+                .foregroundStyle(Color.inkSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(NotionTheme.space4)
+        .background(
+            RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
+                .fill(Color.hoverBg)
+        )
+    }
+
     // MARK: - Amount
 
+    @ViewBuilder
     private var amountField: some View {
+        if isReadOnly {
+            readOnlyAmountField
+        } else {
+            editableAmountField
+        }
+    }
+
+    /// AA 占位流水的金额展示：只读、不可输入、不会拼起键盘
+    private var readOnlyAmountField: some View {
+        VStack(alignment: .center, spacing: NotionTheme.space3) {
+            let dynSize = AmountFontScale.scaledSize(base: 36, forText: vm.amountText)
+            HStack(alignment: .firstTextBaseline, spacing: NotionTheme.space2) {
+                Text("¥")
+                    .font(NotionFont.amountBold(size: dynSize * AmountSymbolStyle.symbolScale))
+                    .foregroundStyle(DirectionColor.amountForeground(kind: vm.direction))
+                Text(vm.amountText.isEmpty ? "0" : vm.amountText)
+                    .font(NotionFont.amountBold(size: dynSize))
+                    .foregroundStyle(DirectionColor.amountForeground(kind: vm.direction))
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .frame(maxWidth: .infinity, alignment: .center)
+            Text(vm.direction == .expense ? "支出" : "收入")
+                .font(NotionFont.micro())
+                .foregroundStyle(Color.inkTertiary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var editableAmountField: some View {
         VStack(alignment: .center, spacing: NotionTheme.space3) {
             // 字号自适应（数值档位 + 字符兜底）：base 36pt 按数值大小分档缩放
             // 用 UIKit 包装的 AmountTextFieldUIKit 在 delegate 层硬拦截输入，
@@ -254,23 +315,73 @@ struct RecordDetailSheet: View {
 
     // MARK: - Category
 
+    @ViewBuilder
     private var categoryField: some View {
-        Button { showCategoryPicker = true } label: {
+        if isReadOnly {
+            // 只读：不可点击弹选择器；仍然使用 fieldRow 表现 hover 卡片样式但去掉右侧 chevron
             fieldRow(
                 icon: vm.selectedCategory?.icon ?? "questionmark",
                 label: "分类",
                 value: vm.selectedCategory?.name ?? "未分类",
-                showChevron: true
+                showChevron: false
             )
+        } else {
+            Button { showCategoryPicker = true } label: {
+                fieldRow(
+                    icon: vm.selectedCategory?.icon ?? "questionmark",
+                    label: "分类",
+                    value: vm.selectedCategory?.name ?? "未分类",
+                    showChevron: true
+                )
+            }
+            .buttonStyle(.pressableRow)
         }
-        .buttonStyle(.pressableRow)
     }
 
     // MARK: - Note
     //
     // 用 UIKit NoteTextFieldUIKit（键盘上方带「完成」按钮）。
     // 失焦 → onFocusChange(false) → focusedField = nil，仍走现有 onChange 触发 commit() 的路径。
+    // AA 占位流水：只读展示，不拼起键盘。
+    @ViewBuilder
     private var noteField: some View {
+        if isReadOnly {
+            readOnlyNoteField
+        } else {
+            editableNoteField
+        }
+    }
+
+    private var readOnlyNoteField: some View {
+        VStack(alignment: .leading, spacing: NotionTheme.space3) {
+            HStack(spacing: NotionTheme.space5) {
+                Image(systemName: "text.alignleft")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(Color.inkSecondary)
+                    .frame(width: 24)
+                Text("备注")
+                    .font(NotionFont.body())
+                    .foregroundStyle(Color.inkPrimary)
+                Spacer()
+            }
+            Text(vm.note.isEmpty ? "无备注" : vm.note)
+                .font(NotionFont.body())
+                .foregroundStyle(vm.note.isEmpty ? Color.inkTertiary : Color.inkPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(NotionTheme.space4)
+                .background(
+                    RoundedRectangle(cornerRadius: NotionTheme.radiusMD, style: .continuous)
+                        .fill(noteFieldFill)
+                )
+        }
+        .padding(NotionTheme.space5)
+        .background(
+            RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
+                .fill(Color.hoverBg)
+        )
+    }
+
+    private var editableNoteField: some View {
         VStack(alignment: .leading, spacing: NotionTheme.space3) {
             HStack(spacing: NotionTheme.space5) {
                 Image(systemName: "text.alignleft")

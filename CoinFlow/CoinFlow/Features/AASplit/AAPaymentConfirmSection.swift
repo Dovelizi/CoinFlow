@@ -13,24 +13,27 @@ struct AAPaymentConfirmSection: View {
     @State private var unmarkConfirm: AAMember? = nil
     @State private var actionError: String? = nil
 
-    /// 应付额 > 0 且未支付的成员（这些成员阻塞结算完成）
+    /// 需补付的活动成员（net > 0）中未点 paid 的，这些人阻塞「完成结算」
     private var pendingActiveMembers: [AAMember] {
-        vm.members.filter { vm.owe(of: $0.id) > 0 && $0.status == .pending }
+        vm.members.filter { vm.netOwe(of: $0.id) > 0 && $0.status == .pending }
     }
 
-    /// 应付额 > 0 且已支付的成员
+    /// 需补付的活动成员中已点 paid 的
     private var paidActiveMembers: [AAMember] {
-        vm.members.filter { vm.owe(of: $0.id) > 0 && $0.status == .paid }
+        vm.members.filter { vm.netOwe(of: $0.id) > 0 && $0.status == .paid }
     }
 
-    /// 总应收（成员部分）
+    /// 总应收（需补付的成员部分、不含多付者的待入账）
     private var totalDue: Decimal {
-        vm.members.reduce(Decimal(0)) { $0 + vm.owe(of: $1.id) }
+        vm.members.reduce(Decimal(0)) { acc, m in
+            let net = vm.netOwe(of: m.id)
+            return net > 0 ? acc + net : acc
+        }
     }
 
-    /// 已收（已支付成员的应付额累加）
+    /// 已收（需补付且已 paid 的成员的 net 累加）
     private var totalCollected: Decimal {
-        paidActiveMembers.reduce(Decimal(0)) { $0 + vm.owe(of: $1.id) }
+        paidActiveMembers.reduce(Decimal(0)) { $0 + vm.netOwe(of: $1.id) }
     }
 
     var body: some View {
@@ -102,7 +105,8 @@ struct AAPaymentConfirmSection: View {
 
     private var progressBar: some View {
         let total = vm.members.count
-        let paidCount = vm.members.filter { vm.owe(of: $0.id) <= 0 || $0.status == .paid }.count
+        // 「进度」以 net 为准：net ≤0 的成员自动计为已付，多付者/刚好持平者不需人为点击
+        let paidCount = vm.members.filter { vm.netOwe(of: $0.id) <= 0 || $0.status == .paid }.count
         let frac: Double = total > 0
             ? Double(paidCount) / Double(total)
             : 0
@@ -140,10 +144,13 @@ struct AAPaymentConfirmSection: View {
     // MARK: - 成员行
 
     private func memberRow(_ m: AAMember) -> some View {
-        let owe = vm.owe(of: m.id)
-        let zeroOwe = owe <= 0
-        // 应付为 0 的成员自动判定 paid（不可手动撤销）
-        let effectivePaid = zeroOwe || m.status == .paid
+        // M12 新语义：并行展示「应付 / 已付 / 差额」，差额 ≤0 的人自动判定已付。
+        let due = vm.owe(of: m.id)            // 应付（均分份额）
+        let paidIn = vm.paid(by: m.id)        // 实付（作为 payer 垫付金额总和）
+        let net = due - paidIn                // 差额：正=要补付 / 负=待入账
+        let needsPay = net > 0                // 还需补付
+        let neutralOrCredit = net <= 0        // 刚好/多付 -> 自动已付
+        let effectivePaid = neutralOrCredit || m.status == .paid
         return HStack(spacing: NotionTheme.space5) {
             Text(m.avatarEmoji ?? "👤")
                 .font(.system(size: 22))
@@ -152,29 +159,58 @@ struct AAPaymentConfirmSection: View {
                 Text(m.name)
                     .font(NotionFont.body())
                     .foregroundStyle(Color.inkPrimary)
-                if zeroOwe {
-                    Text("应付 ¥0 · 自动判定已支付")
-                        .font(NotionFont.micro())
-                        .foregroundStyle(Color.inkTertiary)
-                } else if effectivePaid, let pa = m.paidAt {
-                    Text("应付 ¥\(StatsFormat.decimalGrouped(owe)) · 已确认 \(formatDate(pa))")
-                        .font(NotionFont.micro())
-                        .foregroundStyle(Color.statusSuccess)
-                } else {
-                    Text("应付 ¥\(StatsFormat.decimalGrouped(owe))")
-                        .font(NotionFont.micro())
-                        .foregroundStyle(Color.inkSecondary)
-                }
+                paymentDetailLine(due: due, paidIn: paidIn, net: net,
+                                  neutralOrCredit: neutralOrCredit,
+                                  needsPay: needsPay,
+                                  effectivePaid: effectivePaid,
+                                  paidAt: m.paidAt)
             }
             Spacer()
-            actionButton(member: m, zeroOwe: zeroOwe, paid: effectivePaid)
+            actionButton(member: m, neutralOrCredit: neutralOrCredit, paid: effectivePaid)
         }
         .padding(NotionTheme.space5)
     }
 
+    /// 成员行第二行的「应/已/差额」文案。
+    /// - net <= 0：已付 · 待入账 ¥|net|（net < 0）/ 刚好持平（net == 0）
+    /// - net > 0 且未点 paid：应付 ¥due · 已付 ¥paidIn · 补付 ¥net
+    /// - net > 0 且已点 paid：补付 ¥net · 已确认 时间
     @ViewBuilder
-    private func actionButton(member m: AAMember, zeroOwe: Bool, paid: Bool) -> some View {
-        if zeroOwe {
+    private func paymentDetailLine(due: Decimal, paidIn: Decimal, net: Decimal,
+                                   neutralOrCredit: Bool, needsPay: Bool,
+                                   effectivePaid: Bool, paidAt: Date?) -> some View {
+        if neutralOrCredit {
+            if net < 0 {
+                Text("已付 ¥\(StatsFormat.decimalGrouped(paidIn)) · 待入账 ¥\(StatsFormat.decimalGrouped(-net))")
+                    .font(NotionFont.micro())
+                    .foregroundStyle(Color.statusSuccess)
+            } else {
+                Text("应付 ¥\(StatsFormat.decimalGrouped(due)) · 刚好持平")
+                    .font(NotionFont.micro())
+                    .foregroundStyle(Color.inkTertiary)
+            }
+        } else if effectivePaid, let pa = paidAt {
+            Text("补付 ¥\(StatsFormat.decimalGrouped(net)) · 已确认 \(formatDate(pa))")
+                .font(NotionFont.micro())
+                .foregroundStyle(Color.statusSuccess)
+        } else {
+            // 还需补付
+            if paidIn > 0 {
+                Text("应付 ¥\(StatsFormat.decimalGrouped(due)) · 已付 ¥\(StatsFormat.decimalGrouped(paidIn)) · 补付 ¥\(StatsFormat.decimalGrouped(net))")
+                    .font(NotionFont.micro())
+                    .foregroundStyle(Color.inkSecondary)
+            } else {
+                Text("应付 ¥\(StatsFormat.decimalGrouped(due)) · 补付 ¥\(StatsFormat.decimalGrouped(net))")
+                    .font(NotionFont.micro())
+                    .foregroundStyle(Color.inkSecondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func actionButton(member m: AAMember, neutralOrCredit: Bool, paid: Bool) -> some View {
+        if neutralOrCredit {
+            // 多付者/刚好持平者 -> 自动已付，不允许手动撤销
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(Color.statusSuccess.opacity(0.6))
         } else if paid {

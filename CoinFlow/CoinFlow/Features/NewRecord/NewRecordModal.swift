@@ -15,6 +15,7 @@ struct NewRecordModal: View {
     @State private var showCategoryPicker = false
     @State private var showTimePicker = false
     @State private var showLedgerPicker = false
+    @State private var showPayerPicker = false
 
     /// 金额拦截彩蛋 toast：当 vm.amountClampedAt 变化时弹一次。
     /// 文案是金额超限的轻吐槽，用 DispatchWorkItem 控制 1.6s 自动消失。
@@ -78,10 +79,18 @@ struct NewRecordModal: View {
         .sheet(isPresented: $showLedgerPicker) {
             AALedgerPickerSheet(
                 currentSelection: vm.selectedAALedger,
-                onPick: { picked in vm.selectedAALedger = picked }
+                onPick: { picked in
+                    vm.selectedAALedger = picked
+                    vm.refreshPayersForCurrentAA()
+                }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showPayerPicker) {
+            AAPayerPickerSheet(vm: vm)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
 
@@ -358,6 +367,20 @@ struct NewRecordModal: View {
                     showChevron: false
                 )
             }
+
+            // M12 AA 支付人：仅在 AA 账本下出现。默认"我"，可切换为账本下其他成员或新增成员。
+            if vm.selectedAALedger != nil {
+                innerDivider
+                Button { showPayerPicker = true } label: {
+                    fieldRowContent(
+                        icon: "creditcard.fill",
+                        label: "支付人",
+                        value: payerDisplayName,
+                        showChevron: true
+                    )
+                }
+                .buttonStyle(.pressableRow)
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: NotionTheme.radiusLG, style: .continuous)
@@ -414,6 +437,15 @@ struct NewRecordModal: View {
             return l.name
         }
         return "AA 分账"
+    }
+
+    /// 当前选中的 payer 在 UI 上展示的名字（兜底"我"）。
+    private var payerDisplayName: String {
+        guard let pid = vm.selectedPayerMemberId else { return "我" }
+        if let m = vm.availablePayers.first(where: { $0.id == pid }) {
+            return m.name
+        }
+        return "我"
     }
 
     // MARK: - Time picker sheet (wheel)

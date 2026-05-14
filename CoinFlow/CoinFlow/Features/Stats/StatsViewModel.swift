@@ -372,22 +372,21 @@ final class StatsViewModel: ObservableObject {
 
     /// 一次性算好所有 10 张卡的 hero/insight。
     /// 性能要点：
-    ///   - 单次遍历 curRecords 同时统计 income/expense 笔数 + AA 笔数（替代原 View 层 3 次 filter）
+    ///   - 单次遍历 curRecords 同时统计 income/expense 笔数（替代原 View 层多次 filter）
+    ///   - AA 卡走 SQLiteLedgerRepository.listAA + 跨 ledger 拉本月 record（与 AA Tab 列表口径对齐）
     ///   - SQLite listAll 仅在 reload 时调用一次（原实现每帧调一次，是最大瓶颈）
     private func recomputeCardPreviews() {
         let cal = Calendar.current
         let curInterval = month.dateInterval(in: cal)
 
-        // —— 单遍统计：本月收入笔数 / 支出笔数 / AA 笔数（含 participants 的 record）——
+        // —— 单遍统计：本月收入笔数 / 支出笔数 ——
         var incomeCount = 0
         var expenseCount = 0
-        var aaCount = 0
         for r in allRecords where curInterval.contains(r.occurredAt) {
             switch categoriesById[r.categoryId]?.kind ?? .expense {
             case .income:  incomeCount += 1
             case .expense: expenseCount += 1
             }
-            if (r.participants?.count ?? 0) > 0 { aaCount += 1 }
         }
 
         var dict: [StatsAnalysisDestination: StatsCardPreview] = [:]
@@ -445,11 +444,37 @@ final class StatsViewModel: ObservableObject {
             )
         }
 
-        // aa：含 participants 的笔数
-        dict[.aa] = StatsCardPreview(
-            heroValue: aaCount > 0 ? "\(aaCount) 笔" : "—",
-            insight: aaCount > 0 ? "本月共享账单笔数" : "等待启用 AA"
-        )
+        // aa：基于"AA 账本维度"统计（与 AASplitListView 列表口径对齐）
+        // 旧实现只数个人账本里 participants 非空的 record，永远为 0 —— 现读真实 AA 账本。
+        // 失败时降级回旧占位，避免影响 reload 全流程。
+        do {
+            let aaLedgers = (try? SQLiteLedgerRepository.shared
+                .listAA(status: nil, includeArchived: false)) ?? []
+            if aaLedgers.isEmpty {
+                dict[.aa] = StatsCardPreview(
+                    heroValue: "—",
+                    insight: "等待启用 AA"
+                )
+            } else {
+                let recordingCount = aaLedgers.filter {
+                    ($0.aaStatus ?? .recording) == .recording
+                }.count
+                // 跨 AA 账本聚合"本月笔数"（仅未删除 record，落在当前月区间内）
+                var monthRecordCount = 0
+                for l in aaLedgers {
+                    let records = (try? SQLiteRecordRepository.shared.list(
+                        RecordQuery(ledgerId: l.id, limit: 5000)
+                    )) ?? []
+                    monthRecordCount += records.filter {
+                        $0.deletedAt == nil && curInterval.contains($0.occurredAt)
+                    }.count
+                }
+                dict[.aa] = StatsCardPreview(
+                    heroValue: "\(aaLedgers.count) 个",
+                    insight: "记录中 \(recordingCount) · 本月 \(monthRecordCount) 笔"
+                )
+            }
+        }
 
         // category：头部分类金额 + 名称
         do {
