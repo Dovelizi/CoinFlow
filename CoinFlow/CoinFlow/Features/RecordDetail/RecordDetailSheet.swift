@@ -38,11 +38,23 @@ struct RecordDetailSheet: View {
 
     init(record: Record) {
         _vm = StateObject(wrappedValue: RecordDetailViewModel(record: record))
+        self.forceReadOnly = false
     }
+
+    /// 显式只读入口：在调用方已知"该上下文不允许编辑"（如 AA 已完成账本里点击原始流水）时传 true。
+    /// - 与 AA 占位流水（aaSettlementId 非空）的隐式只读语义并集生效；
+    /// - 默认 false，所有现有调用点行为完全不变。
+    init(record: Record, forceReadOnly: Bool) {
+        _vm = StateObject(wrappedValue: RecordDetailViewModel(record: record))
+        self.forceReadOnly = forceReadOnly
+    }
+
+    private let forceReadOnly: Bool
 
     /// 是否为 AA 占位流水（AA 分账结算后回写到个人账本的「AA 分账·已结算」记录）。
     /// 只读语义：不可编辑金额/分类/备注/时间；不可手动删除；生命周期随 AA 账本联动。
     private var isReadOnly: Bool {
+        if forceReadOnly { return true }
         if let aaId = vm.original.aaSettlementId, !aaId.isEmpty { return true }
         return false
     }

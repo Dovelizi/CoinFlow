@@ -101,8 +101,18 @@ struct VoiceSummaryView: View {
         .padding(NotionTheme.space6)
         .background(
             RoundedRectangle(cornerRadius: NotionTheme.radiusXL, style: .continuous)
-                .fill(Color.surfaceOverlay)
+                .fill(headerCardFill)
         )
+    }
+
+    /// 顶部摘要卡片填充：
+    /// - liquidGlass 主题：用半透白，避免 `Color.surfaceOverlay` 在深色系统下渲染为黑色实心块
+    ///   （叠在玻璃 sheet 上会形成明显黑块，与项目内 VoiceWizardStepView / NewRecordModal 处理方式保持一致）
+    /// - notion / darkLiquid：维持原 `Color.surfaceOverlay`，行为完全不变
+    private var headerCardFill: Color {
+        LGAThemeStore.shared.kind == .liquidGlass
+            ? Color.white.opacity(0.18)
+            : Color.surfaceOverlay
     }
 
     private func statPair(label: String, amount: String, color: Color) -> some View {

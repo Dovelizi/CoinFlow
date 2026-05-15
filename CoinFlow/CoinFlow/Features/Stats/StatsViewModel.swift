@@ -447,6 +447,10 @@ final class StatsViewModel: ObservableObject {
         // aa：基于"AA 账本维度"统计（与 AASplitListView 列表口径对齐）
         // 旧实现只数个人账本里 participants 非空的 record，永远为 0 —— 现读真实 AA 账本。
         // 失败时降级回旧占位，避免影响 reload 全流程。
+        // 月联动口径：以"选中月内至少 1 笔未删原始流水"作为账本活跃定义；
+        //   - heroValue: 当月活跃 AA 账本数
+        //   - insight  : 记录中 X · 当月 Y 笔（X = 当月活跃且状态=recording 的账本数；Y = 当月跨账本流水总笔数）
+        //   - 全量没 AA 账本时仍走"等待启用 AA"占位
         do {
             let aaLedgers = (try? SQLiteLedgerRepository.shared
                 .listAA(status: nil, includeArchived: false)) ?? []
@@ -456,22 +460,30 @@ final class StatsViewModel: ObservableObject {
                     insight: "等待启用 AA"
                 )
             } else {
-                let recordingCount = aaLedgers.filter {
-                    ($0.aaStatus ?? .recording) == .recording
-                }.count
-                // 跨 AA 账本聚合"本月笔数"（仅未删除 record，落在当前月区间内）
+                // 跨 AA 账本聚合：选中月内的"活跃账本"集合 + 流水总笔数
+                var activeLedgerIds = Set<String>()
                 var monthRecordCount = 0
                 for l in aaLedgers {
                     let records = (try? SQLiteRecordRepository.shared.list(
                         RecordQuery(ledgerId: l.id, limit: 5000)
                     )) ?? []
-                    monthRecordCount += records.filter {
+                    let monthRecords = records.filter {
                         $0.deletedAt == nil && curInterval.contains($0.occurredAt)
-                    }.count
+                    }
+                    if !monthRecords.isEmpty {
+                        activeLedgerIds.insert(l.id)
+                        monthRecordCount += monthRecords.count
+                    }
                 }
+                let activeLedgers = aaLedgers.filter { activeLedgerIds.contains($0.id) }
+                let recordingCount = activeLedgers.filter {
+                    ($0.aaStatus ?? .recording) == .recording
+                }.count
                 dict[.aa] = StatsCardPreview(
-                    heroValue: "\(aaLedgers.count) 个",
-                    insight: "记录中 \(recordingCount) · 本月 \(monthRecordCount) 笔"
+                    heroValue: "\(activeLedgers.count) 个",
+                    insight: activeLedgers.isEmpty
+                        ? "当月无活动"
+                        : "记录中 \(recordingCount) · 当月 \(monthRecordCount) 笔"
                 )
             }
         }

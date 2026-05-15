@@ -80,7 +80,9 @@ struct AASplitDetailView: View {
             })
         }
         .sheet(item: $editingRecord) { rec in
-            RecordDetailSheet(record: rec)
+            // AA 已完成账本里点击原始流水：进入只读流水详情（带 readOnlyBanner，不可编辑/不可删除）。
+            // recording / settling 态保持原有可编辑行为。
+            RecordDetailSheet(record: rec, forceReadOnly: vm.status == .completed)
         }
         .sheet(isPresented: $showWritebackList) {
             WritebackRecordListSheet(aaSettlementId: vm.ledgerId)
@@ -477,11 +479,9 @@ struct AASplitDetailView: View {
         let iconColor = cat.map { Color(hex: $0.colorHex) } ?? Color.inkTertiary
         Button {
             Haptics.tap()
-            if vm.status == .completed {
-                showCompleteError = "该分账已完成。如需修改流水，请先回退到「记录中」。"
-            } else {
-                editingRecord = r
-            }
+            // 所有状态都直接打开流水详情；completed 态由 sheet 侧 forceReadOnly 切只读模式
+            // （含 readOnlyBanner / 金额备注只读 / 无删除按钮），符合"账本只读"语义。
+            editingRecord = r
         } label: {
             HStack(spacing: NotionTheme.space5) {
                 ZStack {

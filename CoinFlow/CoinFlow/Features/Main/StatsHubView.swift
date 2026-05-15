@@ -795,7 +795,7 @@ struct StatsHubView: View {
         case .wordcloud: StatsWordCloudView(month: vm.month)
         case .budget:    StatsBudgetView(month: vm.month)
         case .main:      StatsMainView(month: vm.month)
-        case .aa:        StatsAABalanceView()
+        case .aa:        StatsAABalanceView(month: vm.month)
         case .category:  StatsCategoryDetailView(month: vm.month)
         case .year:      StatsYearView(month: vm.month)
         case .hourly:    StatsHourlyView(month: vm.month)
