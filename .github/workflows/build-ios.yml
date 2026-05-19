@@ -13,20 +13,66 @@ on:
           - unsigned (Simulator .app)
           - signed (Device .ipa)
         default: 'unsigned (Simulator .app)'
+      xcode_version:
+        description: 'Xcode version (blank = auto-detect latest)'
+        required: false
+        type: string
+        default: ''
 
 env:
   PROJECT: CoinFlow.xcodeproj
   SCHEME: CoinFlow
-  DEPLOYMENT_TARGET: '16.0'
 
 jobs:
   build:
-    runs-on: macos-latest
-    timeout-minutes: 30
+    runs-on: macos-15
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ── Select Xcode ──────────────────────────────────────────
+      # 项目需要 Xcode 26（Swift 6.2 compiler）才能启用完整的
+      # Liquid Glass .glassEffect() API。若 runner 上没有 Xcode 26，
+      # 则使用系统默认 Xcode 16 —— 代码中已通过 #if compiler(>=6.2)
+      # 做编译期降级，Liquid Glass 退化为 thinMaterial fallback。
+      - name: Select Xcode version
+        id: xcode
+        run: |
+          echo "=== 可用 Xcode 版本 ==="
+          ls -d /Applications/Xcode*.app 2>/dev/null || true
+          echo ""
+
+          # 如果手动指定了版本，优先使用
+          if [ -n "${{ github.event.inputs.xcode_version }}" ]; then
+            TARGET="${{ github.event.inputs.xcode_version }}"
+            XCODE_PATH="/Applications/Xcode_${TARGET}.app"
+            if [ -d "$XCODE_PATH" ]; then
+              echo "✅ 使用指定版本: Xcode $TARGET"
+              sudo xcode-select -s "$XCODE_PATH"
+              echo "xcode_path=$XCODE_PATH" >> "$GITHUB_OUTPUT"
+            else
+              echo "⚠️  Xcode $TARGET 不存在，使用系统默认"
+              echo "xcode_path=$(xcode-select -p)" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            # 自动检测：优先 Xcode 26 beta → 否则系统默认
+            XCODE26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | head -1)
+            if [ -n "$XCODE26" ]; then
+              echo "✅ 自动检测到 Xcode 26: $XCODE26"
+              sudo xcode-select -s "$XCODE26"
+              echo "xcode_path=$XCODE26" >> "$GITHUB_OUTPUT"
+            else
+              echo "ℹ️  未找到 Xcode 26，使用系统默认（Liquid Glass 退化为 fallback）"
+              echo "xcode_path=$(xcode-select -p)" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+          echo ""
+          echo "=== 当前 Xcode ==="
+          xcodebuild -version
+          echo "swift_version=$(xcrun swift --version | head -1)" >> "$GITHUB_OUTPUT"
 
       # ── Generate .xcodeproj ──────────────────────────────────
       - name: Generate Xcode project
@@ -42,23 +88,31 @@ jobs:
             -scheme "$SCHEME"
 
       # ===================================================================
-      # Mode A: Unsigned Simulator Build (no signing required)
+      # Mode A: Unsigned Simulator Build
       # ===================================================================
       - name: Build for Simulator (unsigned)
         if: github.event.inputs.build_type != 'signed (Device .ipa)'
         working-directory: CoinFlow
         run: |
+          # Xcode 26+ 带 iOS 26 Simulator；Xcode 16 fallback 用 iOS 18
+          if xcodebuild -showdestinations -project "$PROJECT" -scheme "$SCHEME" 2>/dev/null | grep -q "iOS 26"; then
+            DEST="platform=iOS Simulator,name=iPhone 17 Pro,OS=26"
+          else
+            DEST="platform=iOS Simulator,name=iPhone 16 Pro,OS=latest"
+          fi
+          echo "Destination: $DEST"
+
           xcodebuild build \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
+            -destination "$DEST" \
             -configuration Debug \
             -derivedDataPath ./DerivedData \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Package .app for Simulator
+      - name: Package .app artifact
         if: github.event.inputs.build_type != 'signed (Device .ipa)'
         working-directory: CoinFlow
         run: |
@@ -66,24 +120,23 @@ jobs:
           if [ -d "$APP_PATH" ]; then
             mkdir -p ./output
             cp -R "$APP_PATH" ./output/
-            echo "✅ App packaged: $APP_PATH"
+            echo "✅ .app packaged: $(basename "$APP_PATH")"
           else
-            echo "❌ .app not found"
-            find ./DerivedData -name "*.app" -type d || true
+            echo "❌ .app not found — searching:"
+            find ./DerivedData -name "*.app" -type d 2>/dev/null || true
             exit 1
           fi
 
       # ===================================================================
-      # Mode B: Signed Device IPA (requires GitHub Secrets)
+      # Mode B: Signed Device IPA
       # ===================================================================
-      - name: Set up code signing
+      - name: Install signing assets
         if: github.event.inputs.build_type == 'signed (Device .ipa)'
         env:
           P12_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
           PROVISION_BASE64: ${{ secrets.PROVISION_PROFILE_BASE64 }}
         run: |
-          # Create temp keychain
           KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
@@ -91,33 +144,29 @@ jobs:
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Decode and import certificate
           echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
           security import "$RUNNER_TEMP/certificate.p12" \
-            -k "$KEYCHAIN_PATH" \
-            -P "$P12_PASSWORD" \
-            -T /usr/bin/codesign \
-            -T /usr/bin/security
+            -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
 
-          # Allow codesign to access the key
           security set-key-partition-list -S apple-tool:,apple: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Add to search list
-          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/["]//g')
+          security list-keychains -d user -s "$KEYCHAIN_PATH" \
+            $(security list-keychains -d user | sed 's/["]//g')
 
-          # Decode and install provisioning profile
-          PROVISION_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-          mkdir -p "$PROVISION_DIR"
-          echo "$PROVISION_BASE64" | base64 --decode > "$PROVISION_DIR/profile.mobileprovision"
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$PROVISION_BASE64" | base64 --decode \
+            > "$HOME/Library/MobileDevice/Provisioning Profiles/profile.mobileprovision"
 
-          echo "✅ Code signing configured"
+          echo "✅ Signing assets installed"
 
-      - name: Archive for device
+      - name: Archive & Export IPA
         if: github.event.inputs.build_type == 'signed (Device .ipa)'
         working-directory: CoinFlow
         env:
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          PROFILE_NAME: ${{ secrets.PROVISION_PROFILE_NAME }}
         run: |
           xcodebuild archive \
             -project "$PROJECT" \
@@ -127,15 +176,10 @@ jobs:
             -destination 'generic/platform=iOS' \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="$TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISION_PROFILE_NAME }}"
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
 
-      - name: Export IPA
-        if: github.event.inputs.build_type == 'signed (Device .ipa)'
-        working-directory: CoinFlow
-        run: |
-          # Generate export options plist
           /usr/libexec/PlistBuddy -c "Add method string ad-hoc" exportOptions.plist
-          /usr/libexec/PlistBuddy -c "Add teamID string ${{ secrets.APPLE_TEAM_ID }}" exportOptions.plist
+          /usr/libexec/PlistBuddy -c "Add teamID string $TEAM_ID" exportOptions.plist
 
           xcodebuild -exportArchive \
             -archivePath ./build/CoinFlow.xcarchive \
