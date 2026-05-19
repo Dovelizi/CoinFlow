@@ -151,17 +151,61 @@ jobs:
             echo "✅ Metadata.appintents (from .app)"
           elif [ -d "$SRC" ]; then
             cp -Rp "$SRC" "$DST"
-            /usr/libexec/PlistBuddy -c "Add CFBundleIdentifier string com.coinflow.intents"   "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundleName string AppIntents"                    "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundlePackageType string BNDL"                   "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundleVersion string 1"                          "$DST/Info.plist" 2>/dev/null || true
+            cat > "$DST/Info.plist" << 'PLISTEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>AppIntents</string>
+    <key>CFBundleExecutable</key>
+    <string>AppIntents</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.coinflow.intents</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>AppIntents</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+</dict>
+</plist>
+PLISTEOF
             echo "⚠️  Metadata.appintents Info.plist 补全"
           else
             mkdir -p "$DST"
-            /usr/libexec/PlistBuddy -c "Add CFBundleIdentifier string com.coinflow.intents"   "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleName string AppIntents"                    "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundlePackageType string BNDL"                   "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleVersion string 1"                          "$DST/Info.plist"
+            cat > "$DST/Info.plist" << 'PLISTEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>AppIntents</string>
+    <key>CFBundleExecutable</key>
+    <string>AppIntents</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.coinflow.intents</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>AppIntents</string>
+    <key>CFBundlePackageType</key>
+    <string>BNDL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+</dict>
+</plist>
+PLISTEOF
             echo "⚠️  Metadata.appintents 占位生成（.app 内无此目录）"
           fi
 
@@ -176,12 +220,12 @@ jobs:
             fi
           fi
 
-          # ── 6. 打包 (ditto = 无 __MACOSX 污染) ────────────────────
+          # ── 6. 打包 (zip store, 无压缩避免兼容性问题) ────────
           cd output
           if [ -d "SwiftSupport" ]; then
-            ditto -c -k --keepParent Payload/ SwiftSupport/ CoinFlow-unsigned.ipa
+            zip -r -0 CoinFlow-unsigned.ipa Payload/ SwiftSupport/
           else
-            ditto -c -k --keepParent Payload/ CoinFlow-unsigned.ipa
+            zip -r -0 CoinFlow-unsigned.ipa Payload/
           fi
 
           # ── 7. 验证 ─────────────────────────────────────────────
