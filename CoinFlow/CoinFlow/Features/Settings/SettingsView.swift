@@ -284,9 +284,10 @@ struct SettingsView: View {
     private var appearanceSummaryText: String {
         let themeName: String
         switch themeStore.kind {
-        case .notion:       themeName = "Dark Notion"
-        case .darkLiquid:   themeName = "Dark Liquid"
-        case .liquidGlass:  themeName = "Liquid Glass"
+        case .notion:        themeName = "Dark Notion"
+        case .darkLiquid:    themeName = "Dark Liquid"
+        case .liquidGlass:   themeName = "Liquid Glass"
+        case .animalIsland:  themeName = "Animal Island"
         }
         return "\(themeName) · \(amountTint.palette.displayName)"
     }

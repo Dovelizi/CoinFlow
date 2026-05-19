@@ -83,15 +83,37 @@ jobs:
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
+          set -o pipefail
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
             -archivePath ./build/CoinFlow.xcarchive \
             -configuration Release \
             -destination 'generic/platform=iOS' \
+            -resultBundlePath ./build/result.xcresult \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee ./build/build.log
+          echo "✅ Archive succeeded"
+
+      - name: Show build errors (if failed)
+        if: failure() && github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
+        working-directory: CoinFlow
+        run: |
+          echo "=== BUILD ERRORS ==="
+          grep -E "error:|❌|fatal error" ./build/build.log || echo "(no error lines matched)"
+          echo ""
+          echo "=== LAST 80 LINES ==="
+          tail -80 ./build/build.log || true
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log-${{ github.run_number }}
+          path: CoinFlow/build/build.log
+          retention-days: 3
 
       # ── 手动签名（需要 GitHub Secrets）────────────────────────
       - name: Install signing assets
@@ -129,15 +151,19 @@ jobs:
         if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
+          set -o pipefail
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
             -archivePath ./build/CoinFlow.xcarchive \
             -configuration Release \
             -destination 'generic/platform=iOS' \
+            -resultBundlePath ./build/result.xcresult \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
-            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISION_PROFILE_NAME }}"
+            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISION_PROFILE_NAME }}" \
+            2>&1 | tee ./build/build.log
+          echo "✅ Archive succeeded"
 
       # ===================================================================
       # 打包 IPA
