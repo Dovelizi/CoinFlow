@@ -11,7 +11,8 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Select Xcode 26
         run: |
@@ -25,28 +26,42 @@ jobs:
         working-directory: CoinFlow
         run: python3 scripts/gen_xcodeproj.py
 
-      - name: Resolve Swift packages
+      - name: Resolve Package Dependencies
         working-directory: CoinFlow
         run: |
           xcodebuild -resolvePackageDependencies \
             -project CoinFlow.xcodeproj \
             -scheme CoinFlow
 
-      - name: Build iOS App
-        uses: yukiarrr/ios-build-action@v1.3.1
-        with:
-          project: "CoinFlow/CoinFlow.xcodeproj"
-          scheme: "CoinFlow"
-          configuration: "Release"
-          export-method: "development"
-          code-sign-identity: "-"
-          signing-certificate: ""
-          provisioning-profile: ""
-          output-path: "CoinFlow/output"
+      - name: Build for iOS Device (Unsigned)
+        working-directory: CoinFlow
+        run: |
+          xcodebuild build \
+            -project CoinFlow.xcodeproj \
+            -scheme CoinFlow \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Find .app and create IPA
+        run: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "CoinFlow.app" -type d | head -1)
+          if [ ! -d "$APP_PATH" ]; then
+            echo "ERROR: .app not found in DerivedData"
+            find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d 2>/dev/null | head -5 || true
+            exit 1
+          fi
+          echo "App: $APP_PATH"
+          mkdir -p build/Payload
+          cp -R "$APP_PATH" build/Payload/
+          cd build
+          zip -r CoinFlow.ipa Payload/
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: CoinFlow-${{ github.run_number }}
-          path: CoinFlow/output/*
+          name: CoinFlow-iOS
+          path: build/CoinFlow.ipa
           retention-days: 7
