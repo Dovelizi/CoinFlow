@@ -37,6 +37,7 @@ enum AppTheme: String, CaseIterable {
     case notion
     case darkLiquid
     case liquidGlass
+    case animalIsland
 }
 
 // MARK: - 全局开关（持久化到 UserDefaults）
@@ -112,6 +113,9 @@ enum LGAThemeRuntime {
 
     /// 是否为 Liquid Glass 真玻璃主题
     static var isLiquidGlass: Bool { LGAThemeStore.shared.kind == .liquidGlass }
+
+    /// 是否为 Animal Island 动森主题
+    static var isAnimalIsland: Bool { LGAThemeStore.shared.kind == .animalIsland }
 }
 
 // MARK: - 主题常量（v4 实色深炭灰）
@@ -315,6 +319,8 @@ private struct CardSurfaceModifier: ViewModifier {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .stroke(notionStroke ?? .clear, lineWidth: notionStroke == nil ? 0 : 0.5)
                 )
+        case .animalIsland:
+            content._aiCard(cornerRadius: cornerRadius)
         }
     }
 }
@@ -339,6 +345,8 @@ private struct AppTabPillBackgroundModifier: ViewModifier {
                                              lineWidth: 0.5)
                         )
                 )
+        case .animalIsland:
+            content._aiPill()
         }
     }
 }
@@ -376,6 +384,8 @@ extension View {
             self.modifier(GlassAChipModifier(radius: radius, tint: tint))
         case .notion:
             self
+        case .animalIsland:
+            self._aiChip(radius: radius)
         }
     }
 }
@@ -391,6 +401,7 @@ extension Color {
         switch LGAThemeStore.shared.kind {
         case .notion:                    return Color.canvasBG
         case .darkLiquid, .liquidGlass:  return Color.clear
+        case .animalIsland:              return AnimalIslandTheme.bgCanvas
         }
     }
 
@@ -405,6 +416,7 @@ extension Color {
         case .notion:       return Color.canvasBG
         case .darkLiquid:   return LGATheme.canvas
         case .liquidGlass:  return Color.clear
+        case .animalIsland: return AnimalIslandTheme.bgContent
         }
     }
 }
@@ -446,6 +458,8 @@ private struct ThemedSheetSurfaceModifier: ViewModifier {
                 LGATheme.canvas.ignoresSafeArea()
             case .notion:
                 Color.canvasBG.ignoresSafeArea()
+            case .animalIsland:
+                AnimalIslandTheme.bgContent.ignoresSafeArea()
             }
             content
         }
@@ -505,6 +519,8 @@ private struct ThemedPageBackground: ViewModifier {
                 LiquidGlassABackground(kind: kind)
             case .notion:
                 Color.canvasBG.ignoresSafeArea()
+            case .animalIsland:
+                AnimalIslandBackground(kind: kind)
             }
             content
         }
@@ -533,6 +549,8 @@ struct ThemedBackgroundLayer: View {
             LiquidGlassABackground(kind: kind)
         case .notion:
             Color.canvasBG.ignoresSafeArea()
+        case .animalIsland:
+            AnimalIslandBackground(kind: kind)
         }
     }
 }

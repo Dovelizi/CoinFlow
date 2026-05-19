@@ -230,3 +230,39 @@ extension ButtonStyle where Self == PressableAccentStyle {
     /// 主 CTA 按钮（保存、开启 CoinFlow、立即同步）
     static var pressableAccent: PressableAccentStyle { PressableAccentStyle() }
 }
+
+// MARK: - 7. Animal Island 游戏按键 3D 立体按钮
+
+/// 动森主题按钮：pill 形 + 底部 5pt 厚阴影 + 按下时下压 2pt
+///
+/// Web 等价效果：
+/// - 默认: `box-shadow: 0 5px 0 0 #bdaea0`
+/// - 按下: `transform: translateY(2px)` + `box-shadow: 0 1px 0 0 #bdaea0`
+struct AnimalIslandButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.97
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                Capsule(style: .continuous)
+                    .fill(AnimalIslandTheme.shadowBtn)
+                    .offset(y: configuration.isPressed ? 1 : 5)
+            )
+            .background(
+                Capsule(style: .continuous)
+                    .fill(AnimalIslandTheme.bgCanvas)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(AnimalIslandTheme.bgCanvas, lineWidth: 2)
+            )
+            .offset(y: configuration.isPressed ? 2 : 0)
+            .scaleEffect(configuration.isPressed ? scale : 1.0)
+            .animation(Motion.snap, value: configuration.isPressed)
+    }
+}
+
+extension ButtonStyle where Self == AnimalIslandButtonStyle {
+    /// 动森主题 3D 游戏按键
+    static var animalIsland: AnimalIslandButtonStyle { AnimalIslandButtonStyle() }
+}

@@ -78,7 +78,7 @@ struct CoinFlowApp: App {
             // LGA 主题根背景：开关启用时整树最底层叠 LiquidGlassABackground，
             // 锁屏/隐私 shield 也会跟随；关闭时不渲染任何背景，保持原 Notion 视觉零变化。
             .themedRootBackground()
-            .preferredColorScheme(.dark) // 文档 B10
+            .preferredColorScheme(LGAThemeStore.shared.kind == .animalIsland ? .light : .dark)
         }
     }
 }

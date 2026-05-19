@@ -161,6 +161,10 @@ SOURCE_FILES: list[str] = [
     # Theme — Dark Glass 主题（原文件未注册到脚本，2026-05-10 补回）
     "Theme/LiquidGlassATheme.swift",
     "Theme/LiquidGlassRealTheme.swift",
+    # Theme — Animal Island 动森主题（2026-05-19 新增）
+    "Theme/AnimalIslandTheme.swift",
+    "Theme/AnimalIslandThemeModifiers.swift",
+    "Theme/AnimalIslandFont.swift",
     # Common 工具（原未注册）
     "Features/Common/TabBarVisibility.swift",
     "Features/Common/InteractivePopEnabler.swift",

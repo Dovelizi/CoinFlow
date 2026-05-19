@@ -152,6 +152,12 @@ struct AppearanceSettingsView: View {
                     subtitle: "iOS 26 真·液态玻璃·跟随系统亮暗",
                     iconSystemName: "sparkles"
                 )
+                themeCard(
+                    kind: .animalIsland,
+                    title: "Animal Island",
+                    subtitle: "动森风格·温暖大地色·游戏按键手感",
+                    iconSystemName: "leaf.fill"
+                )
             }
         }
     }
@@ -162,7 +168,8 @@ struct AppearanceSettingsView: View {
                            subtitle: String,
                            iconSystemName: String) -> some View {
         let isSelected = themeStore.kind == kind
-        let isCurrentLGA = themeStore.kind == .darkLiquid
+        let isDarkTheme = themeStore.kind == .darkLiquid
+        let isAnimalTheme = themeStore.kind == .animalIsland
         let radius: CGFloat = 14
 
         Button {
@@ -183,11 +190,11 @@ struct AppearanceSettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.custom("PingFangSC-Semibold", size: 16))
-                        .foregroundStyle(isCurrentLGA ? Color.white : Color.inkPrimary)
+                        .foregroundStyle(isDarkTheme ? Color.white : (isAnimalTheme ? Color.aiTextPrimary : Color.inkPrimary))
                     Text(subtitle)
                         .font(NotionFont.small())
                         .foregroundStyle(
-                            isCurrentLGA ? LGATheme.textSecondary : Color.inkSecondary
+                            isDarkTheme ? LGATheme.textSecondary : (isAnimalTheme ? Color.aiTextSecondary : Color.inkSecondary)
                         )
                         .lineLimit(2)
                 }
@@ -198,7 +205,7 @@ struct AppearanceSettingsView: View {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(LGATheme.accentSelection)
+                        .foregroundStyle(isAnimalTheme ? AnimalIslandTheme.focusYellow : LGATheme.accentSelection)
                 } else {
                     Image(systemName: "circle")
                         .font(.system(size: 22, weight: .regular))
@@ -209,16 +216,18 @@ struct AppearanceSettingsView: View {
             .padding(.vertical, NotionTheme.space5)
             .background(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(isCurrentLGA
+                    .fill(isDarkTheme
                           ? LGATheme.cardFill
-                          : (isSelected
-                             ? LGATheme.accentSelection.opacity(0.08)
-                             : Color.surfaceOverlay))
+                          : (isAnimalTheme
+                             ? AnimalIslandTheme.bgContent
+                             : (isSelected
+                                ? LGATheme.accentSelection.opacity(0.08)
+                                : Color.surfaceOverlay)))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
                     .strokeBorder(
-                        isSelected ? LGATheme.accentSelection : Color.border,
+                        isSelected ? (isAnimalTheme ? AnimalIslandTheme.focusYellow : LGATheme.accentSelection) : Color.border,
                         lineWidth: isSelected ? 1.0 : NotionTheme.borderWidth
                     )
             )
@@ -236,6 +245,7 @@ struct AppearanceSettingsView: View {
         case .liquidGlass:
             // Liquid Glass 用 accent + 紫的混合，呼应玻璃折射感
             return Color(red: 0.36, green: 0.42, blue: 0.95).opacity(0.85)
+        case .animalIsland: return AnimalIslandTheme.primaryColor.opacity(0.2)
         }
     }
 
@@ -245,6 +255,7 @@ struct AppearanceSettingsView: View {
         case .notion:       return Color.accentBlue
         case .darkLiquid:   return Color.white
         case .liquidGlass:  return Color.white
+        case .animalIsland: return AnimalIslandTheme.primaryColor
         }
     }
 
