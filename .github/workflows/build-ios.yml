@@ -2,7 +2,7 @@ name: Build iOS App
 
 on:
   push:
-    branches: [main]
+    branches: [feature/animal-island-theme]
   workflow_dispatch:
     inputs:
       build_type:
