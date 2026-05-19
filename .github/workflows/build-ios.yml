@@ -174,16 +174,36 @@ jobs:
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
-          APP_PATH=$(find ./build/CoinFlow.xcarchive/Products/Applications -name "*.app" -type d | head -1)
+          XCARCHIVE=./build/CoinFlow.xcarchive
+          APP_PATH=$(find "$XCARCHIVE"/Products/Applications -name "*.app" -type d | head -1)
           if [ ! -d "$APP_PATH" ]; then
             echo "❌ .app not found in xcarchive"
-            find ./build/CoinFlow.xcarchive -name "*.app" -type d 2>/dev/null || true
+            find "$XCARCHIVE" -name "*.app" -type d 2>/dev/null || true
             exit 1
           fi
 
           mkdir -p ./output/Payload
           cp -R "$APP_PATH" ./output/Payload/
-          cd ./output && zip -r CoinFlow-unsigned.ipa Payload/ > /dev/null
+
+          # Include SwiftSupport for Sideloadly compatibility
+          if [ -d "$XCARCHIVE/SwiftSupport" ]; then
+            cp -R "$XCARCHIVE/SwiftSupport" ./output/SwiftSupport
+            echo "SwiftSupport included from xcarchive"
+          else
+            SWIFT_DYLIB_DIR="$(dirname "$(xcrun --sdk iphoneos --show-sdk-path)")/../../Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos"
+            if [ -d "$SWIFT_DYLIB_DIR" ]; then
+              mkdir -p ./output/SwiftSupport/iphoneos
+              cp "$SWIFT_DYLIB_DIR"/*.dylib ./output/SwiftSupport/iphoneos/
+              echo "SwiftSupport copied from toolchain"
+            fi
+          fi
+
+          cd ./output
+          if [ -d "SwiftSupport" ]; then
+            zip -r CoinFlow-unsigned.ipa Payload/ SwiftSupport/ > /dev/null
+          else
+            zip -r CoinFlow-unsigned.ipa Payload/ > /dev/null
+          fi
           echo "✅ Unsigned IPA: CoinFlow-unsigned.ipa  ($(du -sh CoinFlow-unsigned.ipa | cut -f1))"
 
       - name: Export signed IPA
