@@ -182,29 +182,36 @@ jobs:
             exit 1
           fi
 
-          mkdir -p ./output/Payload
-          cp -R "$APP_PATH" ./output/Payload/
+          # Strip any code-signature remnants from the .app bundle
+          find "$APP_PATH" -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true
+          find "$APP_PATH" -name "embedded.mobileprovision" -delete 2>/dev/null || true
+
+          TMPDIR=$(mktemp -d)
+          cp -R "$APP_PATH" "$TMPDIR/Payload/"
 
           # Include SwiftSupport for Sideloadly compatibility
           if [ -d "$XCARCHIVE/SwiftSupport" ]; then
-            cp -R "$XCARCHIVE/SwiftSupport" ./output/SwiftSupport
+            cp -R "$XCARCHIVE/SwiftSupport" "$TMPDIR/SwiftSupport"
             echo "SwiftSupport included from xcarchive"
           else
             SWIFT_DYLIB_DIR="$(dirname "$(xcrun --sdk iphoneos --show-sdk-path)")/../../Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos"
             if [ -d "$SWIFT_DYLIB_DIR" ]; then
-              mkdir -p ./output/SwiftSupport/iphoneos
-              cp "$SWIFT_DYLIB_DIR"/*.dylib ./output/SwiftSupport/iphoneos/
+              mkdir -p "$TMPDIR/SwiftSupport/iphoneos"
+              cp "$SWIFT_DYLIB_DIR"/*.dylib "$TMPDIR/SwiftSupport/iphoneos/"
               echo "SwiftSupport copied from toolchain"
             fi
           fi
 
-          cd ./output
+          # Use ditto for a clean PKZip archive
+          mkdir -p ./output
+          cd "$TMPDIR"
           if [ -d "SwiftSupport" ]; then
-            zip -r CoinFlow-unsigned.ipa Payload/ SwiftSupport/ > /dev/null
+            ditto -c -k --keepParent Payload/ SwiftSupport/ "$OLDPWD/output/CoinFlow-unsigned.ipa"
           else
-            zip -r CoinFlow-unsigned.ipa Payload/ > /dev/null
+            ditto -c -k --keepParent Payload/ "$OLDPWD/output/CoinFlow-unsigned.ipa"
           fi
-          echo "✅ Unsigned IPA: CoinFlow-unsigned.ipa  ($(du -sh CoinFlow-unsigned.ipa | cut -f1))"
+          cd "$OLDPWD"
+          echo "✅ Unsigned IPA: CoinFlow-unsigned.ipa  ($(du -sh ./output/CoinFlow-unsigned.ipa | cut -f1))"
 
       - name: Export signed IPA
         if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
