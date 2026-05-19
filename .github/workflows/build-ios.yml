@@ -151,61 +151,30 @@ jobs:
             echo "✅ Metadata.appintents (from .app)"
           elif [ -d "$SRC" ]; then
             cp -Rp "$SRC" "$DST"
-            cat > "$DST/Info.plist" << 'PLISTEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleDisplayName</key>
-    <string>AppIntents</string>
-    <key>CFBundleExecutable</key>
-    <string>AppIntents</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.coinflow.intents</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>AppIntents</string>
-    <key>CFBundlePackageType</key>
-    <string>BNDL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-</dict>
-</plist>
-PLISTEOF
+            rm -f "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleDevelopmentRegion string en"                "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundleDisplayName string AppIntents"              "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundleExecutable string AppIntents"               "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundleIdentifier string com.coinflow.intents"     "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundleInfoDictionaryVersion string 6.0"           "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundleName string AppIntents"                     "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundlePackageType string BNDL"                    "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundleShortVersionString string 1.0"              "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundleVersion string 1"                           "$DST/Info.plist" 2>/dev/null || true
+            plutil -convert xml1 "$DST/Info.plist" 2>/dev/null || true
             echo "⚠️  Metadata.appintents Info.plist 补全"
           else
             mkdir -p "$DST"
-            cat > "$DST/Info.plist" << 'PLISTEOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleDisplayName</key>
-    <string>AppIntents</string>
-    <key>CFBundleExecutable</key>
-    <string>AppIntents</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.coinflow.intents</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleName</key>
-    <string>AppIntents</string>
-    <key>CFBundlePackageType</key>
-    <string>BNDL</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-</dict>
-</plist>
-PLISTEOF
+            /usr/libexec/PlistBuddy -c "Add CFBundleDevelopmentRegion string en"                "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleDisplayName string AppIntents"              "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleExecutable string AppIntents"               "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleIdentifier string com.coinflow.intents"     "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleInfoDictionaryVersion string 6.0"           "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleName string AppIntents"                     "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundlePackageType string BNDL"                    "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleShortVersionString string 1.0"              "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleVersion string 1"                           "$DST/Info.plist"
+            plutil -convert xml1 "$DST/Info.plist"
             echo "⚠️  Metadata.appintents 占位生成（.app 内无此目录）"
           fi
 
