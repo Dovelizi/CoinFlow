@@ -92,10 +92,12 @@ jobs:
           KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/["]//g')
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
           echo "$PROVISION_BASE64" | base64 --decode > "$HOME/Library/MobileDevice/Provisioning Profiles/profile.mobileprovision"
 
@@ -114,30 +116,88 @@ jobs:
             PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISION_PROFILE_NAME }}"
 
       # ==============================================
-      # ✅ 最终打包：100% 不会失败，清理 Metadata
+      # 打包无签名 IPA（Sideloadly 兼容）
       # ==============================================
-      - name: Package IPA for Sideloadly
+      - name: Package unsigned IPA
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
+          set -e
+
+          # ── 1. 定位 .app ────────────────────────────────────────
           APP=$(find build/CoinFlow.xcarchive/Products/Applications -name "*.app" -type d | head -1)
+          if [ ! -d "$APP" ]; then
+            echo "❌ .app not found"
+            exit 1
+          fi
+          echo "📦 $APP"
+
+          # ── 2. 复制到 Payload ───────────────────────────────────
+          rm -rf output
           mkdir -p output/Payload
           cp -Rp "$APP" output/Payload/
 
-          # 安全清理，不存在也不会报错
-          rm -rf output/Payload/*.app/Metadata.appintents 2>/dev/null || true
-          rm -rf output/Payload/Metadata.appintents 2>/dev/null || true
-          rm -rf output/Payload/*.app/_CodeSignature 2>/dev/null || true
+          # ── 3. 剥离签名残留 ──────────────────────────────────────
+          find output/Payload -name "_CodeSignature"         -type d -exec rm -rf {} + 2>/dev/null || true
+          find output/Payload -name "embedded.mobileprovision" -type f -delete 2>/dev/null || true
+          find output/Payload -name "CodeResources"           -type f -delete 2>/dev/null || true
 
+          # ── 4. Metadata.appintents → Payload 层 ────────────────
+          SRC="$APP/Metadata.appintents"
+          DST="output/Payload/Metadata.appintents"
+
+          if [ -d "$SRC" ] && [ -f "$SRC/Info.plist" ]; then
+            cp -Rp "$SRC" "$DST"
+            echo "✅ Metadata.appintents (from .app)"
+          elif [ -d "$SRC" ]; then
+            cp -Rp "$SRC" "$DST"
+            /usr/libexec/PlistBuddy -c "Add CFBundleIdentifier string com.coinflow.intents"   "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundleName string AppIntents"                    "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundlePackageType string BNDL"                   "$DST/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Add CFBundleVersion string 1"                          "$DST/Info.plist" 2>/dev/null || true
+            echo "⚠️  Metadata.appintents Info.plist 补全"
+          else
+            mkdir -p "$DST"
+            /usr/libexec/PlistBuddy -c "Add CFBundleIdentifier string com.coinflow.intents"   "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleName string AppIntents"                    "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundlePackageType string BNDL"                   "$DST/Info.plist"
+            /usr/libexec/PlistBuddy -c "Add CFBundleVersion string 1"                          "$DST/Info.plist"
+            echo "⚠️  Metadata.appintents 占位生成（.app 内无此目录）"
+          fi
+
+          # ── 5. SwiftSupport ──────────────────────────────────────
+          if [ -d "build/CoinFlow.xcarchive/SwiftSupport" ]; then
+            cp -R build/CoinFlow.xcarchive/SwiftSupport output/SwiftSupport
+          else
+            SWIFT_DIR="$(dirname "$(xcrun --sdk iphoneos --show-sdk-path)")/../../Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos"
+            if [ -d "$SWIFT_DIR" ]; then
+              mkdir -p output/SwiftSupport/iphoneos
+              cp "$SWIFT_DIR"/*.dylib output/SwiftSupport/iphoneos/ 2>/dev/null || true
+            fi
+          fi
+
+          # ── 6. 打包 (ditto = 无 __MACOSX 污染) ────────────────────
           cd output
-          zip -r -0 CoinFlow-unsigned.ipa Payload/ >/dev/null
-          echo "✅ 打包成功！"
+          if [ -d "SwiftSupport" ]; then
+            ditto -c -k --keepParent Payload/ SwiftSupport/ CoinFlow-unsigned.ipa
+          else
+            ditto -c -k --keepParent Payload/ CoinFlow-unsigned.ipa
+          fi
+
+          # ── 7. 验证 ─────────────────────────────────────────────
+          echo ""
+          if unzip -l CoinFlow-unsigned.ipa | grep -q "Payload/Metadata.appintents/Info.plist"; then
+            echo "✅ Payload/Metadata.appintents/Info.plist 已就位"
+          else
+            echo "❌ Payload/Metadata.appintents/Info.plist 缺失 — Sideloadly 会失败"
+            exit 1
+          fi
+          echo "✅ IPA 就绪: $(du -sh CoinFlow-unsigned.ipa | cut -f1)"
 
       - name: Export signed IPA
         if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
-          touch exportOptions.plist
           /usr/libexec/PlistBuddy -c "Add method string ad-hoc" exportOptions.plist
           /usr/libexec/PlistBuddy -c "Add teamID string ${{ secrets.APPLE_TEAM_ID }}" exportOptions.plist
           xcodebuild -exportArchive -archivePath build/CoinFlow.xcarchive -exportPath output -exportOptionsPlist exportOptions.plist
