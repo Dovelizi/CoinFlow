@@ -117,6 +117,9 @@ jobs:
 
       # ==============================================
       # 打包无签名 IPA（Sideloadly 兼容）
+      # 策略：删除 Metadata.appintents 避免 Sideloadly 检测 App Intents 后
+      #        索要 Payload/Metadata.appintents/Info.plist 导致安装失败。
+      #        这与 Xcode 15 行为一致（彼时无此目录，Sideloadly 正常工作）。
       # ==============================================
       - name: Package unsigned IPA
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
@@ -124,61 +127,25 @@ jobs:
         run: |
           set -e
 
-          # ── 1. 定位 .app ────────────────────────────────────────
           APP=$(find build/CoinFlow.xcarchive/Products/Applications -name "*.app" -type d | head -1)
           if [ ! -d "$APP" ]; then
-            echo "❌ .app not found"
+            echo "ERROR: .app not found in xcarchive"
             exit 1
           fi
-          echo "📦 $APP"
+          echo "App: $APP"
 
-          # ── 2. 复制到 Payload ───────────────────────────────────
           rm -rf output
           mkdir -p output/Payload
           cp -Rp "$APP" output/Payload/
 
-          # ── 3. 剥离签名残留 ──────────────────────────────────────
+          # 删除 Metadata.appintents — 不让 Sideloadly 检测到 App Intents
+          find output/Payload -name "Metadata.appintents" -type d -exec rm -rf {} + 2>/dev/null || true
+
+          # 删除签名残留
           find output/Payload -name "_CodeSignature"         -type d -exec rm -rf {} + 2>/dev/null || true
           find output/Payload -name "embedded.mobileprovision" -type f -delete 2>/dev/null || true
-          find output/Payload -name "CodeResources"           -type f -delete 2>/dev/null || true
 
-          # ── 4. Metadata.appintents → Payload 层 ────────────────
-          SRC="$APP/Metadata.appintents"
-          DST="output/Payload/Metadata.appintents"
-
-          if [ -d "$SRC" ] && [ -f "$SRC/Info.plist" ]; then
-            cp -Rp "$SRC" "$DST"
-            echo "✅ Metadata.appintents (from .app)"
-          elif [ -d "$SRC" ]; then
-            cp -Rp "$SRC" "$DST"
-            rm -f "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleDevelopmentRegion string en"                "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundleDisplayName string AppIntents"              "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundleExecutable string AppIntents"               "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundleIdentifier string com.coinflow.intents"     "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundleInfoDictionaryVersion string 6.0"           "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundleName string AppIntents"                     "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundlePackageType string BNDL"                    "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundleShortVersionString string 1.0"              "$DST/Info.plist" 2>/dev/null || true
-            /usr/libexec/PlistBuddy -c "Add CFBundleVersion string 1"                           "$DST/Info.plist" 2>/dev/null || true
-            plutil -convert xml1 "$DST/Info.plist" 2>/dev/null || true
-            echo "⚠️  Metadata.appintents Info.plist 补全"
-          else
-            mkdir -p "$DST"
-            /usr/libexec/PlistBuddy -c "Add CFBundleDevelopmentRegion string en"                "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleDisplayName string AppIntents"              "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleExecutable string AppIntents"               "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleIdentifier string com.coinflow.intents"     "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleInfoDictionaryVersion string 6.0"           "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleName string AppIntents"                     "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundlePackageType string BNDL"                    "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleShortVersionString string 1.0"              "$DST/Info.plist"
-            /usr/libexec/PlistBuddy -c "Add CFBundleVersion string 1"                           "$DST/Info.plist"
-            plutil -convert xml1 "$DST/Info.plist"
-            echo "⚠️  Metadata.appintents 占位生成（.app 内无此目录）"
-          fi
-
-          # ── 5. SwiftSupport ──────────────────────────────────────
+          # SwiftSupport
           if [ -d "build/CoinFlow.xcarchive/SwiftSupport" ]; then
             cp -R build/CoinFlow.xcarchive/SwiftSupport output/SwiftSupport
           else
@@ -189,7 +156,7 @@ jobs:
             fi
           fi
 
-          # ── 6. 打包 (zip store, 无压缩避免兼容性问题) ────────
+          # 打包
           cd output
           if [ -d "SwiftSupport" ]; then
             zip -r -0 CoinFlow-unsigned.ipa Payload/ SwiftSupport/
@@ -197,15 +164,11 @@ jobs:
             zip -r -0 CoinFlow-unsigned.ipa Payload/
           fi
 
-          # ── 7. 验证 ─────────────────────────────────────────────
           echo ""
-          if unzip -l CoinFlow-unsigned.ipa | grep -q "Payload/Metadata.appintents/Info.plist"; then
-            echo "✅ Payload/Metadata.appintents/Info.plist 已就位"
-          else
-            echo "❌ Payload/Metadata.appintents/Info.plist 缺失 — Sideloadly 会失败"
-            exit 1
-          fi
-          echo "✅ IPA 就绪: $(du -sh CoinFlow-unsigned.ipa | cut -f1)"
+          echo "IPA: $(du -sh CoinFlow-unsigned.ipa | cut -f1)"
+          echo "Metadata.appintents in IPA:"
+          unzip -l CoinFlow-unsigned.ipa | grep -i metadata || echo "  (none — expected)"
+          echo "Done."
 
       - name: Export signed IPA
         if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
