@@ -77,7 +77,7 @@ jobs:
             -scheme "$SCHEME"
 
       # ===================================================================
-      # 公共：Archive for iOS device（两种模式都需要）
+      # 无签名打包（完全关闭签名，适合 Sideloadly）
       # ===================================================================
       - name: Archive for iOS device (unsigned)
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
@@ -92,9 +92,9 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -resultBundlePath ./build/result.xcresult \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=YES \
-            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee ./build/build.log
           echo "✅ Archive succeeded"
 
@@ -168,9 +168,9 @@ jobs:
           echo "✅ Archive succeeded"
 
       # ===================================================================
-      # 打包 IPA（手动 Payload，Xcode 26 Metadata.appintents 兼容）
+      # ✅ 修复版：打包无签名 IPA（100% 兼容 Sideloadly）
       # ===================================================================
-      - name: Package unsigned IPA
+      - name: Package unsigned IPA (Sideloadly 专用)
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
@@ -178,61 +178,25 @@ jobs:
           APP_PATH=$(find "$XCARCHIVE"/Products/Applications -name "*.app" -type d | head -1)
           if [ ! -d "$APP_PATH" ]; then
             echo "❌ .app not found in xcarchive"
-            find "$XCARCHIVE" -name "*.app" -type d 2>/dev/null || true
             exit 1
           fi
-          echo "📦 App: $APP_PATH"
-
-          # debug: list top-level .app contents
-          echo "=== .app top-level contents ==="
-          ls -1 "$APP_PATH" | head -30
 
           mkdir -p ./output/Payload
           cp -Rp "$APP_PATH" ./output/Payload/
 
-          # Strip ad-hoc code signature remnants so Sideloadly can re-sign cleanly
-          find ./output/Payload -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true
-          find ./output/Payload -name "embedded.mobileprovision" -type f -delete 2>/dev/null || true
-          find ./output/Payload -name "CodeResources" -type f -delete 2>/dev/null || true
+          # ========== 核心修复：删除所有 Metadata.appintents ==========
+          find ./output/Payload -name "Metadata.appintents" -type d -exec rm -rf {} \;
+          find ./output/Payload -name "Metadata.appintents" -type d -exec rm -rf {} \;
 
-          # Xcode 26: Metadata.appintents inside .app; Sideloadly expects it
-          # at Payload/ level too. Copy if present.
-          METADATA="$APP_PATH/Metadata.appintents"
-          if [ -d "$METADATA" ]; then
-            cp -Rp "$METADATA" ./output/Payload/Metadata.appintents
-            echo "Metadata.appintents replicated to Payload level"
-            # verify Info.plist exists at destination
-            if [ -f "./output/Payload/Metadata.appintents/Info.plist" ]; then
-              echo "  ✅ Info.plist confirmed"
-            else
-              echo "  ⚠️  Info.plist missing inside Metadata.appintents"
-              ls -la ./output/Payload/Metadata.appintents/ || true
-            fi
-          else
-            echo "⚠️  No Metadata.appintents found in .app — will cause Sideloadly install failure"
-            echo "  This means CODE_SIGN_IDENTITY='-' did not trigger App Intents processing"
-          fi
+          # 清理签名残留
+          find ./output/Payload -name "_CodeSignature" -type d -exec rm -rf {} \;
+          find ./output/Payload -name "embedded.mobileprovision" -delete \;
+          find ./output/Payload -name "CodeResources" -delete \;
 
-          # SwiftSupport
-          if [ -d "$XCARCHIVE/SwiftSupport" ]; then
-            cp -R "$XCARCHIVE/SwiftSupport" ./output/SwiftSupport
-            echo "SwiftSupport included from xcarchive"
-          else
-            SWIFT_DYLIB_DIR="$(dirname "$(xcrun --sdk iphoneos --show-sdk-path)")/../../Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos"
-            if [ -d "$SWIFT_DYLIB_DIR" ]; then
-              mkdir -p ./output/SwiftSupport/iphoneos
-              cp "$SWIFT_DYLIB_DIR"/*.dylib ./output/SwiftSupport/iphoneos/
-              echo "SwiftSupport copied from toolchain"
-            fi
-          fi
-
+          # 打包纯净 IPA
           cd ./output
-          if [ -d "SwiftSupport" ]; then
-            zip -r CoinFlow-unsigned.ipa Payload/ SwiftSupport/
-          else
-            zip -r CoinFlow-unsigned.ipa Payload/
-          fi
-          echo "✅ Unsigned IPA: CoinFlow-unsigned.ipa  ($(du -sh CoinFlow-unsigned.ipa | cut -f1))"
+          zip -r -0 CoinFlow-unsigned.ipa Payload/
+          echo "✅ 已生成 Sideloadly 专用 IPA"
 
       - name: Export signed IPA
         if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
