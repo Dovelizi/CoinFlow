@@ -1,36 +1,18 @@
 workflows:
-  ios-build-xcode26:
-    name: iOS Build with Xcode 26
+  build-ios:
+    name: Build iOS
     instance_type: mac_mini_m2
-    max_build_duration: 30
     environment:
-      xcode: 26.0       # ✅ 强制使用 Xcode 26
+      xcode: 26.0
     scripts:
-      - name: Generate Xcode Project
-        script: |
-          cd CoinFlow
-          python3 scripts/gen_xcodeproj.py
-
-      - name: Build unsigned iOS App (Xcode 26)
-        script: |
-          cd CoinFlow
-          xcodebuild build \
-            -project CoinFlow.xcodeproj \
-            -scheme CoinFlow \
-            -configuration Release \
-            -destination "generic/platform=iOS" \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
-
-      - name: Create Standard IPA
-        script: |
-          cd CoinFlow
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "CoinFlow.app" -type d | head -1)
-          mkdir -p output/Payload
-          cp -R "$APP_PATH" output/Payload/
-          cd output
-          zip -q -r CoinFlow.ipa Payload/
-
+      - cd CoinFlow && python3 scripts/gen_xcodeproj.py
+      - cd CoinFlow && xcodebuild build -project CoinFlow.xcodeproj -scheme CoinFlow -configuration Release -destination "generic/platform=iOS" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED="NO" CODE_SIGNING_ALLOWED="NO"
+      - |
+        cd CoinFlow
+        APP=$(find ~/Library/Developer/Xcode/DerivedData -name "CoinFlow.app" -type d | head -1)
+        mkdir -p output/Payload
+        cp -R "$APP" output/Payload/
+        cd output
+        zip -q -r CoinFlow.ipa Payload/
     artifacts:
       - CoinFlow/output/CoinFlow.ipa
