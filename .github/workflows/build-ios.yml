@@ -74,9 +74,9 @@ jobs:
             -archivePath build/CoinFlow.xcarchive \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=YES \
+            CODE_SIGNING_ALLOWED=YES \
             2>&1 | tee build/build.log
 
       # ==============================================
@@ -117,9 +117,8 @@ jobs:
 
       # ==============================================
       # 打包无签名 IPA（Sideloadly 兼容）
-      # 策略：删除 Metadata.appintents 避免 Sideloadly 检测 App Intents 后
-      #        索要 Payload/Metadata.appintents/Info.plist 导致安装失败。
-      #        这与 Xcode 15 行为一致（彼时无此目录，Sideloadly 正常工作）。
+      # Xcode 26 + CODE_SIGN_IDENTITY="-" 生成真实 Metadata.appintents
+      # 从 .app 内复制到 Payload/ 层，Sideloadly 即可找到
       # ==============================================
       - name: Package unsigned IPA
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
@@ -138,12 +137,29 @@ jobs:
           mkdir -p output/Payload
           cp -Rp "$APP" output/Payload/
 
-          # 删除 Metadata.appintents — 不让 Sideloadly 检测到 App Intents
-          find output/Payload -name "Metadata.appintents" -type d -exec rm -rf {} + 2>/dev/null || true
-
-          # 删除签名残留
+          # 剥离 ad-hoc 签名残留（Sideloadly 会用用户 ID 重签）
           find output/Payload -name "_CodeSignature"         -type d -exec rm -rf {} + 2>/dev/null || true
           find output/Payload -name "embedded.mobileprovision" -type f -delete 2>/dev/null || true
+
+          # Xcode 26 Metadata.appintents：.app 内 → Payload 层
+          SRC="$APP/Metadata.appintents"
+          DST="output/Payload/Metadata.appintents"
+
+          if [ -d "$SRC" ]; then
+            cp -Rp "$SRC" "$DST"
+            echo "Metadata.appintents: .app → Payload/"
+            if [ -f "$DST/Info.plist" ]; then
+              echo "  Info.plist OK ($(wc -c < "$DST/Info.plist") bytes)"
+            else
+              echo "  WARNING: Info.plist missing inside Metadata.appintents"
+              ls -l "$DST/" || true
+            fi
+          else
+            echo "ERROR: No Metadata.appintents in .app — CODE_SIGN_IDENTITY='-' did not trigger App Intents processing"
+            echo "  .app top-level contents:"
+            ls -1 "$APP" | head -20
+            exit 1
+          fi
 
           # SwiftSupport
           if [ -d "build/CoinFlow.xcarchive/SwiftSupport" ]; then
@@ -166,8 +182,13 @@ jobs:
 
           echo ""
           echo "IPA: $(du -sh CoinFlow-unsigned.ipa | cut -f1)"
-          echo "Metadata.appintents in IPA:"
-          unzip -l CoinFlow-unsigned.ipa | grep -i metadata || echo "  (none — expected)"
+          echo "Verify Payload/Metadata.appintents/Info.plist:"
+          if unzip -l CoinFlow-unsigned.ipa | grep -q "Payload/Metadata.appintents/Info.plist"; then
+            echo "  PRESENT"
+          else
+            echo "  MISSING — packaging failed"
+            exit 1
+          fi
           echo "Done."
 
       - name: Export signed IPA
