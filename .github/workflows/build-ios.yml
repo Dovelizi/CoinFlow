@@ -80,7 +80,7 @@ jobs:
       # 公共：Archive for iOS device（两种模式都需要）
       # ===================================================================
       - name: Archive for iOS device (unsigned)
-        if: github.event.inputs.build_type == 'unsigned（下载后用 Sideloady 免费签）'
+        if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
           xcodebuild archive \
@@ -143,7 +143,7 @@ jobs:
       # 打包 IPA
       # ===================================================================
       - name: Package unsigned IPA (via Payload zip)
-        if: github.event.inputs.build_type == 'unsigned（下载后用 Sideloady 免费签）'
+        if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
           APP_PATH=$(find ./build/CoinFlow.xcarchive/Products/Applications -name "*.app" -type d | head -1)
