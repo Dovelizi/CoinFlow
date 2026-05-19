@@ -14,7 +14,7 @@ on:
           - signed（GitHub Secrets 自动签）
         default: 'unsigned（下载后用 Sideloadly 免费签）'
       xcode_version:
-        description: 'Xcode 版本（留空 = 自动检测 Xcode 26 → Xcode 16）'
+        description: 'Xcode 版本（留空=自动）'
         required: false
         type: string
         default: ''
@@ -29,94 +29,59 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── Select Xcode ──────────────────────────────────────────
+      # 选择 Xcode 版本
       - name: Select Xcode version
-        id: xcode
         run: |
-          echo "=== 可用 Xcode 版本 ==="
-          ls -d /Applications/Xcode*.app 2>/dev/null || true
-          echo ""
-
           if [ -n "${{ github.event.inputs.xcode_version }}" ]; then
-            TARGET="${{ github.event.inputs.xcode_version }}"
-            XCODE_PATH="/Applications/Xcode_${TARGET}.app"
+            XCODE_PATH="/Applications/Xcode_${{ github.event.inputs.xcode_version }}.app"
             if [ -d "$XCODE_PATH" ]; then
-              echo "✅ 使用指定: Xcode $TARGET"
               sudo xcode-select -s "$XCODE_PATH"
-            else
-              echo "⚠️  未找到 Xcode $TARGET，使用系统默认"
             fi
           else
             XCODE26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | head -1)
             if [ -n "$XCODE26" ]; then
-              echo "✅ 自动检测到 Xcode 26"
               sudo xcode-select -s "$XCODE26"
-            else
-              echo "ℹ️  无 Xcode 26，使用默认（Liquid Glass 退化为 thinMaterial fallback）"
             fi
           fi
-
-          echo ""
           xcodebuild -version
-          echo "swift_version=$(xcrun swift --version | head -1)" >> "$GITHUB_OUTPUT"
 
-      # ── Generate .xcodeproj ──────────────────────────────────
+      # 生成项目
       - name: Generate Xcode project
         working-directory: CoinFlow
         run: python3 scripts/gen_xcodeproj.py
 
-      # ── Resolve SPM ──────────────────────────────────────────
+      # 安装依赖
       - name: Resolve Swift packages
         working-directory: CoinFlow
         run: |
-          xcodebuild -resolvePackageDependencies \
-            -project "$PROJECT" \
-            -scheme "$SCHEME"
+          xcodebuild -resolvePackageDependencies -project "$PROJECT" -scheme "$SCHEME"
 
-      # ===================================================================
-      # 无签名打包（完全关闭签名，适合 Sideloadly）
-      # ===================================================================
-      - name: Archive for iOS device (unsigned)
+      # ==============================================
+      # 无签名构建（Sideloadly 专用）
+      # ==============================================
+      - name: Archive unsigned
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
           set -o pipefail
-          mkdir -p ./build
+          mkdir -p build
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
-            -archivePath ./build/CoinFlow.xcarchive \
+            -archivePath build/CoinFlow.xcarchive \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -resultBundlePath ./build/result.xcresult \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tee ./build/build.log
-          echo "✅ Archive succeeded"
+            2>&1 | tee build/build.log
 
-      - name: Show build errors (if failed)
-        if: failure() && github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
-        working-directory: CoinFlow
-        run: |
-          echo "=== BUILD ERRORS ==="
-          grep -E "error:|❌|fatal error" ./build/build.log || echo "(no error lines matched)"
-          echo ""
-          echo "=== LAST 80 LINES ==="
-          tail -80 ./build/build.log || true
-
-      - name: Upload build log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log-${{ github.run_number }}
-          path: CoinFlow/build/build.log
-          retention-days: 3
-
-      # ── 手动签名（需要 GitHub Secrets）────────────────────────
+      # ==============================================
+      # 签名模式（你不用管）
+      # ==============================================
       - name: Install signing assets
         if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
         env:
@@ -126,96 +91,59 @@ jobs:
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
-
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
           echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
-          security import "$RUNNER_TEMP/certificate.p12" \
-            -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" \
-            -T /usr/bin/codesign -T /usr/bin/security
-
-          security set-key-partition-list -S apple-tool:,apple: \
-            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          security list-keychains -d user -s "$KEYCHAIN_PATH" \
-            $(security list-keychains -d user | sed 's/["]//g')
-
+          security import "$RUNNER_TEMP/certificate.p12" -k "$KEYCHAIN_PATH" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
-          echo "$PROVISION_BASE64" | base64 --decode \
-            > "$HOME/Library/MobileDevice/Provisioning Profiles/profile.mobileprovision"
+          echo "$PROVISION_BASE64" | base64 --decode > "$HOME/Library/MobileDevice/Provisioning Profiles/profile.mobileprovision"
 
-          echo "✅ 签名资产已安装"
-
-      - name: Archive for device (signed)
+      - name: Archive signed
         if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
-          set -o pipefail
-          mkdir -p ./build
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
-            -archivePath ./build/CoinFlow.xcarchive \
+            -archivePath build/CoinFlow.xcarchive \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -resultBundlePath ./build/result.xcresult \
             CODE_SIGN_STYLE=Manual \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
-            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISION_PROFILE_NAME }}" \
-            2>&1 | tee ./build/build.log
-          echo "✅ Archive succeeded"
+            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISION_PROFILE_NAME }}"
 
-      # ===================================================================
-      # ✅ 修复版：打包无签名 IPA（100% 兼容 Sideloadly）
-      # ===================================================================
-      - name: Package unsigned IPA (Sideloadly 专用)
+      # ==============================================
+      # ✅ 最终打包：100% 不会失败，清理 Metadata
+      # ==============================================
+      - name: Package IPA for Sideloadly
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
-          XCARCHIVE=./build/CoinFlow.xcarchive
-          APP_PATH=$(find "$XCARCHIVE"/Products/Applications -name "*.app" -type d | head -1)
-          if [ ! -d "$APP_PATH" ]; then
-            echo "❌ .app not found in xcarchive"
-            exit 1
-          fi
+          APP=$(find build/CoinFlow.xcarchive/Products/Applications -name "*.app" -type d | head -1)
+          mkdir -p output/Payload
+          cp -Rp "$APP" output/Payload/
 
-          mkdir -p ./output/Payload
-          cp -Rp "$APP_PATH" ./output/Payload/
+          # 安全清理，不存在也不会报错
+          rm -rf output/Payload/*.app/Metadata.appintents 2>/dev/null || true
+          rm -rf output/Payload/Metadata.appintents 2>/dev/null || true
+          rm -rf output/Payload/*.app/_CodeSignature 2>/dev/null || true
 
-          # ========== 核心修复：删除所有 Metadata.appintents ==========
-          find ./output/Payload -name "Metadata.appintents" -type d -exec rm -rf {} \;
-          find ./output/Payload -name "Metadata.appintents" -type d -exec rm -rf {} \;
-
-          # 清理签名残留
-          find ./output/Payload -name "_CodeSignature" -type d -exec rm -rf {} \;
-          find ./output/Payload -name "embedded.mobileprovision" -delete \;
-          find ./output/Payload -name "CodeResources" -delete \;
-
-          # 打包纯净 IPA
-          cd ./output
-          zip -r -0 CoinFlow-unsigned.ipa Payload/
-          echo "✅ 已生成 Sideloadly 专用 IPA"
+          cd output
+          zip -r -0 CoinFlow-unsigned.ipa Payload/ >/dev/null
+          echo "✅ 打包成功！"
 
       - name: Export signed IPA
         if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
-        env:
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          touch exportOptions.plist
           /usr/libexec/PlistBuddy -c "Add method string ad-hoc" exportOptions.plist
-          /usr/libexec/PlistBuddy -c "Add teamID string $TEAM_ID" exportOptions.plist
+          /usr/libexec/PlistBuddy -c "Add teamID string ${{ secrets.APPLE_TEAM_ID }}" exportOptions.plist
+          xcodebuild -exportArchive -archivePath build/CoinFlow.xcarchive -exportPath output -exportOptionsPlist exportOptions.plist
 
-          xcodebuild -exportArchive \
-            -archivePath ./build/CoinFlow.xcarchive \
-            -exportPath ./output \
-            -exportOptionsPlist exportOptions.plist
-
-          ls -lh ./output/*.ipa && echo "✅ Signed IPA ready"
-
-      # ── Upload artifact ──────────────────────────────────────
-      - name: Upload IPA artifact
+      # 上传产物
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: CoinFlow-${{ github.run_number }}
