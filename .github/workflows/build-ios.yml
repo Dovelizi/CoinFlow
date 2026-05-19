@@ -92,9 +92,9 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -resultBundlePath ./build/result.xcresult \
-            CODE_SIGN_IDENTITY="-" \
-            CODE_SIGNING_REQUIRED=YES \
-            CODE_SIGNING_ALLOWED=YES \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee ./build/build.log
           echo "✅ Archive succeeded"
 
@@ -168,44 +168,59 @@ jobs:
           echo "✅ Archive succeeded"
 
       # ===================================================================
-      # 打包 IPA（xcodebuild -exportArchive，兼容 Xcode 26 Metadata.appintents）
+      # 打包 IPA（手动 Payload，Xcode 26 Metadata.appintents 兼容）
       # ===================================================================
-      - name: Package unsigned IPA (xcodebuild -exportArchive)
+      - name: Package unsigned IPA
         if: github.event.inputs.build_type != 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
         run: |
-          set -o pipefail
-          mkdir -p ./output
-
-          cat > exportOptions.plist << 'PLISTEOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>development</string>
-          </dict>
-          </plist>
-          PLISTEOF
-
-          xcodebuild -exportArchive \
-            -archivePath ./build/CoinFlow.xcarchive \
-            -exportPath ./output \
-            -exportOptionsPlist exportOptions.plist \
-            2>&1 | tee -a ./build/build.log
-
-          # -exportArchive puts .ipa inside a timestamped subfolder; flatten it
-          IPA=$(find ./output -name "*.ipa" -type f | head -1)
-          if [ -n "$IPA" ] && [ "$IPA" != "./output/CoinFlow-unsigned.ipa" ]; then
-            mv "$IPA" ./output/CoinFlow-unsigned.ipa
-            # clean up the empty timestamped dir
-            find ./output -type d -empty -delete 2>/dev/null || true
-          elif [ -z "$IPA" ]; then
-            echo "❌ No .ipa produced"
-            ls -R ./output || true
+          XCARCHIVE=./build/CoinFlow.xcarchive
+          APP_PATH=$(find "$XCARCHIVE"/Products/Applications -name "*.app" -type d | head -1)
+          if [ ! -d "$APP_PATH" ]; then
+            echo "❌ .app not found in xcarchive"
+            find "$XCARCHIVE" -name "*.app" -type d 2>/dev/null || true
             exit 1
           fi
-          echo "✅ Unsigned IPA: CoinFlow-unsigned.ipa  ($(du -sh ./output/CoinFlow-unsigned.ipa | cut -f1))"
+          echo "📦 App: $APP_PATH"
+
+          # debug: list top-level .app contents
+          echo "=== .app top-level contents ==="
+          ls -1 "$APP_PATH" | head -30
+
+          mkdir -p ./output/Payload
+          cp -Rp "$APP_PATH" ./output/Payload/
+
+          # Xcode 26: Metadata.appintents inside .app; Sideloadly expects it
+          # at Payload/ level too. Copy if present.
+          METADATA="$APP_PATH/Metadata.appintents"
+          if [ -d "$METADATA" ]; then
+            cp -Rp "$METADATA" ./output/Payload/Metadata.appintents
+            echo "Metadata.appintents replicated to Payload level"
+          else
+            echo "⚠️  No Metadata.appintents found in .app"
+            ls -la "$APP_PATH"/Metadata.appintents 2>/dev/null || true
+          fi
+
+          # SwiftSupport
+          if [ -d "$XCARCHIVE/SwiftSupport" ]; then
+            cp -R "$XCARCHIVE/SwiftSupport" ./output/SwiftSupport
+            echo "SwiftSupport included from xcarchive"
+          else
+            SWIFT_DYLIB_DIR="$(dirname "$(xcrun --sdk iphoneos --show-sdk-path)")/../../Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/iphoneos"
+            if [ -d "$SWIFT_DYLIB_DIR" ]; then
+              mkdir -p ./output/SwiftSupport/iphoneos
+              cp "$SWIFT_DYLIB_DIR"/*.dylib ./output/SwiftSupport/iphoneos/
+              echo "SwiftSupport copied from toolchain"
+            fi
+          fi
+
+          cd ./output
+          if [ -d "SwiftSupport" ]; then
+            zip -r CoinFlow-unsigned.ipa Payload/ SwiftSupport/
+          else
+            zip -r CoinFlow-unsigned.ipa Payload/
+          fi
+          echo "✅ Unsigned IPA: CoinFlow-unsigned.ipa  ($(du -sh CoinFlow-unsigned.ipa | cut -f1))"
 
       - name: Export signed IPA
         if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
