@@ -84,6 +84,7 @@ jobs:
         working-directory: CoinFlow
         run: |
           set -o pipefail
+          mkdir -p ./build
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -152,6 +153,7 @@ jobs:
         working-directory: CoinFlow
         run: |
           set -o pipefail
+          mkdir -p ./build
           xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
