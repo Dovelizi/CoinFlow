@@ -92,9 +92,9 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -resultBundlePath ./build/result.xcresult \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=YES \
+            CODE_SIGNING_ALLOWED=YES \
             2>&1 | tee ./build/build.log
           echo "✅ Archive succeeded"
 
@@ -190,15 +190,27 @@ jobs:
           mkdir -p ./output/Payload
           cp -Rp "$APP_PATH" ./output/Payload/
 
+          # Strip ad-hoc code signature remnants so Sideloadly can re-sign cleanly
+          find ./output/Payload -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true
+          find ./output/Payload -name "embedded.mobileprovision" -type f -delete 2>/dev/null || true
+          find ./output/Payload -name "CodeResources" -type f -delete 2>/dev/null || true
+
           # Xcode 26: Metadata.appintents inside .app; Sideloadly expects it
           # at Payload/ level too. Copy if present.
           METADATA="$APP_PATH/Metadata.appintents"
           if [ -d "$METADATA" ]; then
             cp -Rp "$METADATA" ./output/Payload/Metadata.appintents
             echo "Metadata.appintents replicated to Payload level"
+            # verify Info.plist exists at destination
+            if [ -f "./output/Payload/Metadata.appintents/Info.plist" ]; then
+              echo "  ✅ Info.plist confirmed"
+            else
+              echo "  ⚠️  Info.plist missing inside Metadata.appintents"
+              ls -la ./output/Payload/Metadata.appintents/ || true
+            fi
           else
-            echo "⚠️  No Metadata.appintents found in .app"
-            ls -la "$APP_PATH"/Metadata.appintents 2>/dev/null || true
+            echo "⚠️  No Metadata.appintents found in .app — will cause Sideloadly install failure"
+            echo "  This means CODE_SIGN_IDENTITY='-' did not trigger App Intents processing"
           fi
 
           # SwiftSupport
