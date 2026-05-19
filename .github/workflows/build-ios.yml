@@ -6,15 +6,15 @@ on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: 'Build type'
+        description: '签名方式'
         required: true
         type: choice
         options:
-          - unsigned (Simulator .app)
-          - signed (Device .ipa)
-        default: 'unsigned (Simulator .app)'
+          - unsigned（下载后用 Sideloadly 免费签）
+          - signed（GitHub Secrets 自动签）
+        default: 'unsigned（下载后用 Sideloadly 免费签）'
       xcode_version:
-        description: 'Xcode version (blank = auto-detect latest)'
+        description: 'Xcode 版本（留空 = 自动检测 Xcode 26 → Xcode 16）'
         required: false
         type: string
         default: ''
@@ -33,10 +33,6 @@ jobs:
         uses: actions/checkout@v4
 
       # ── Select Xcode ──────────────────────────────────────────
-      # 项目需要 Xcode 26（Swift 6.2 compiler）才能启用完整的
-      # Liquid Glass .glassEffect() API。若 runner 上没有 Xcode 26，
-      # 则使用系统默认 Xcode 16 —— 代码中已通过 #if compiler(>=6.2)
-      # 做编译期降级，Liquid Glass 退化为 thinMaterial fallback。
       - name: Select Xcode version
         id: xcode
         run: |
@@ -44,33 +40,26 @@ jobs:
           ls -d /Applications/Xcode*.app 2>/dev/null || true
           echo ""
 
-          # 如果手动指定了版本，优先使用
           if [ -n "${{ github.event.inputs.xcode_version }}" ]; then
             TARGET="${{ github.event.inputs.xcode_version }}"
             XCODE_PATH="/Applications/Xcode_${TARGET}.app"
             if [ -d "$XCODE_PATH" ]; then
-              echo "✅ 使用指定版本: Xcode $TARGET"
+              echo "✅ 使用指定: Xcode $TARGET"
               sudo xcode-select -s "$XCODE_PATH"
-              echo "xcode_path=$XCODE_PATH" >> "$GITHUB_OUTPUT"
             else
-              echo "⚠️  Xcode $TARGET 不存在，使用系统默认"
-              echo "xcode_path=$(xcode-select -p)" >> "$GITHUB_OUTPUT"
+              echo "⚠️  未找到 Xcode $TARGET，使用系统默认"
             fi
           else
-            # 自动检测：优先 Xcode 26 beta → 否则系统默认
             XCODE26=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | head -1)
             if [ -n "$XCODE26" ]; then
-              echo "✅ 自动检测到 Xcode 26: $XCODE26"
+              echo "✅ 自动检测到 Xcode 26"
               sudo xcode-select -s "$XCODE26"
-              echo "xcode_path=$XCODE26" >> "$GITHUB_OUTPUT"
             else
-              echo "ℹ️  未找到 Xcode 26，使用系统默认（Liquid Glass 退化为 fallback）"
-              echo "xcode_path=$(xcode-select -p)" >> "$GITHUB_OUTPUT"
+              echo "ℹ️  无 Xcode 26，使用默认（Liquid Glass 退化为 thinMaterial fallback）"
             fi
           fi
 
           echo ""
-          echo "=== 当前 Xcode ==="
           xcodebuild -version
           echo "swift_version=$(xcrun swift --version | head -1)" >> "$GITHUB_OUTPUT"
 
@@ -79,7 +68,7 @@ jobs:
         working-directory: CoinFlow
         run: python3 scripts/gen_xcodeproj.py
 
-      # ── Resolve SPM dependencies ─────────────────────────────
+      # ── Resolve SPM ──────────────────────────────────────────
       - name: Resolve Swift packages
         working-directory: CoinFlow
         run: |
@@ -88,50 +77,25 @@ jobs:
             -scheme "$SCHEME"
 
       # ===================================================================
-      # Mode A: Unsigned Simulator Build
+      # 公共：Archive for iOS device（两种模式都需要）
       # ===================================================================
-      - name: Build for Simulator (unsigned)
-        if: github.event.inputs.build_type != 'signed (Device .ipa)'
+      - name: Archive for iOS device (unsigned)
+        if: github.event.inputs.build_type == 'unsigned（下载后用 Sideloady 免费签）'
         working-directory: CoinFlow
         run: |
-          # Xcode 26+ 带 iOS 26 Simulator；Xcode 16 fallback 用 iOS 18
-          if xcodebuild -showdestinations -project "$PROJECT" -scheme "$SCHEME" 2>/dev/null | grep -q "iOS 26"; then
-            DEST="platform=iOS Simulator,name=iPhone 17 Pro,OS=26"
-          else
-            DEST="platform=iOS Simulator,name=iPhone 16 Pro,OS=latest"
-          fi
-          echo "Destination: $DEST"
-
-          xcodebuild build \
+          xcodebuild archive \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
-            -destination "$DEST" \
-            -configuration Debug \
-            -derivedDataPath ./DerivedData \
+            -archivePath ./build/CoinFlow.xcarchive \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
-      - name: Package .app artifact
-        if: github.event.inputs.build_type != 'signed (Device .ipa)'
-        working-directory: CoinFlow
-        run: |
-          APP_PATH=$(find ./DerivedData/Build/Products/Debug-iphonesimulator -name "*.app" -type d | head -1)
-          if [ -d "$APP_PATH" ]; then
-            mkdir -p ./output
-            cp -R "$APP_PATH" ./output/
-            echo "✅ .app packaged: $(basename "$APP_PATH")"
-          else
-            echo "❌ .app not found — searching:"
-            find ./DerivedData -name "*.app" -type d 2>/dev/null || true
-            exit 1
-          fi
-
-      # ===================================================================
-      # Mode B: Signed Device IPA
-      # ===================================================================
+      # ── 手动签名（需要 GitHub Secrets）────────────────────────
       - name: Install signing assets
-        if: github.event.inputs.build_type == 'signed (Device .ipa)'
+        if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
         env:
           P12_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
           P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
@@ -159,14 +123,11 @@ jobs:
           echo "$PROVISION_BASE64" | base64 --decode \
             > "$HOME/Library/MobileDevice/Provisioning Profiles/profile.mobileprovision"
 
-          echo "✅ Signing assets installed"
+          echo "✅ 签名资产已安装"
 
-      - name: Archive & Export IPA
-        if: github.event.inputs.build_type == 'signed (Device .ipa)'
+      - name: Archive for device (signed)
+        if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
         working-directory: CoinFlow
-        env:
-          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          PROFILE_NAME: ${{ secrets.PROVISION_PROFILE_NAME }}
         run: |
           xcodebuild archive \
             -project "$PROJECT" \
@@ -175,9 +136,34 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             CODE_SIGN_STYLE=Manual \
-            DEVELOPMENT_TEAM="$TEAM_ID" \
-            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME"
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            PROVISIONING_PROFILE_SPECIFIER="${{ secrets.PROVISION_PROFILE_NAME }}"
 
+      # ===================================================================
+      # 打包 IPA
+      # ===================================================================
+      - name: Package unsigned IPA (via Payload zip)
+        if: github.event.inputs.build_type == 'unsigned（下载后用 Sideloady 免费签）'
+        working-directory: CoinFlow
+        run: |
+          APP_PATH=$(find ./build/CoinFlow.xcarchive/Products/Applications -name "*.app" -type d | head -1)
+          if [ ! -d "$APP_PATH" ]; then
+            echo "❌ .app not found in xcarchive"
+            find ./build/CoinFlow.xcarchive -name "*.app" -type d 2>/dev/null || true
+            exit 1
+          fi
+
+          mkdir -p ./output/Payload
+          cp -R "$APP_PATH" ./output/Payload/
+          cd ./output && zip -r CoinFlow-unsigned.ipa Payload/ > /dev/null
+          echo "✅ Unsigned IPA: CoinFlow-unsigned.ipa  ($(du -sh CoinFlow-unsigned.ipa | cut -f1))"
+
+      - name: Export signed IPA
+        if: github.event.inputs.build_type == 'signed（GitHub Secrets 自动签）'
+        working-directory: CoinFlow
+        env:
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
           /usr/libexec/PlistBuddy -c "Add method string ad-hoc" exportOptions.plist
           /usr/libexec/PlistBuddy -c "Add teamID string $TEAM_ID" exportOptions.plist
 
@@ -186,12 +172,12 @@ jobs:
             -exportPath ./output \
             -exportOptionsPlist exportOptions.plist
 
-          echo "✅ IPA exported"
+          ls -lh ./output/*.ipa && echo "✅ Signed IPA ready"
 
       # ── Upload artifact ──────────────────────────────────────
-      - name: Upload artifact
+      - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CoinFlow-${{ github.event.inputs.build_type || 'unsigned' }}-${{ github.run_number }}
+          name: CoinFlow-${{ github.run_number }}
           path: CoinFlow/output/*
           retention-days: 7
