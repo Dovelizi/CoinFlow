@@ -184,6 +184,26 @@ SOURCE_FILES: list[str] = [
     "Features/Stats/Summary/Views/BillsSummaryListView.swift",
     "Features/Stats/Summary/Views/SummaryFloatingCard.swift",
     "Features/Stats/Summary/Views/BillsSummaryPushBanner.swift",
+    # M11/M12 — AA 分账功能（数据模型 / 仓库 / 迁移 / 业务视图）
+    "Data/Models/AAMember.swift",
+    "Data/Models/AAShare.swift",
+    "Data/Repositories/AAMemberRepository.swift",
+    "Data/Repositories/AAShareRepository.swift",
+    "Data/Seed/AAMigrationsM12.swift",
+    "Data/Seed/AAMigrationsM13.swift",
+    "Features/AASplit/AALedgerPickerSheet.swift",
+    "Features/AASplit/AAMemberManageSection.swift",
+    "Features/AASplit/AAPaymentConfirmSection.swift",
+    "Features/AASplit/AAShareEditSection.swift",
+    "Features/AASplit/AASplitCreateSheet.swift",
+    "Features/AASplit/AASplitDetailView.swift",
+    "Features/AASplit/AASplitDetailViewModel.swift",
+    "Features/AASplit/AASplitListView.swift",
+    "Features/AASplit/AASplitListViewModel.swift",
+    "Features/AASplit/AASplitService.swift",
+    "Features/NewRecord/AAPayerPickerSheet.swift",
+    # 远程附件加载器（OCR 截图从飞书下载）
+    "Data/Storage/RemoteAttachmentLoader.swift",
 ]
 
 # --------------------------------------------------------------------------
