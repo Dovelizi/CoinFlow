@@ -5,7 +5,6 @@ workflows:
     max_build_duration: 30
     environment:
       xcode: 26.0       # ✅ 强制使用 Xcode 26
-      os: macOS 15      # ✅ 对应 GitHub Actions macos-15
     scripts:
       - name: Generate Xcode Project
         script: |
