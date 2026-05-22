@@ -20,7 +20,7 @@ from textwrap import dedent
 
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT_NAME = "CoinFlow"
-BUNDLE_ID = "com.lemolli.coinflow.app"
+BUNDLE_ID = "com.lemolli.coinflow"
 DEPLOYMENT_TARGET = "16.0"
 # 注：每次重新运行本脚本后，需在 Xcode → CoinFlow target → Signing & Capabilities
 # 手动选一次 Team（Personal Team 个人 free 账号）。无法在脚本里固化 Team ID

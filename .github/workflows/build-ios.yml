@@ -100,7 +100,7 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :method string development" "$EXPORT_OPTS"
           /usr/libexec/PlistBuddy -c "Add :teamID string $TEAM_ID" "$EXPORT_OPTS"
           /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$EXPORT_OPTS"
-          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.lemolli.coinflow.app string $PROFILE_UUID" "$EXPORT_OPTS"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.lemolli.coinflow string $PROFILE_UUID" "$EXPORT_OPTS"
           /usr/libexec/PlistBuddy -c "Add :signingStyle string manual" "$EXPORT_OPTS"
 
           echo "ExportOptions.plist:"
