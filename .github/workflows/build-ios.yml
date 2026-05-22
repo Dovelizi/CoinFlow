@@ -61,13 +61,21 @@ jobs:
           base64 -d -i /tmp/profile.b64 -o /tmp/decoded_profile
           echo "decoded size: $(wc -c < /tmp/decoded_profile)"
 
-          UUID=$(security cms -D -i /tmp/decoded_profile | /usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin)
-          TEAM_ID=$(security cms -D -i /tmp/decoded_profile | /usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" /dev/stdin)
+          # Extract plist from CMS envelope via openssl
+          PROFILE_PLIST=$(openssl smime -inform der -verify -noverify -in /tmp/decoded_profile 2>/dev/null)
+          if [ -z "$PROFILE_PLIST" ]; then
+            # Fallback: plist might be embedded without proper CMS envelope
+            PROFILE_PLIST=$(grep -a '<?xml' /tmp/decoded_profile || true)
+          fi
+          echo "$PROFILE_PLIST" > /tmp/decoded.plist
+
+          UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" /tmp/decoded.plist)
+          TEAM_ID=$(/usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" /tmp/decoded.plist)
           echo "Profile UUID: $UUID"
           echo "Team ID: $TEAM_ID"
 
           mv /tmp/decoded_profile ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
-          rm -f /tmp/profile.b64
+          rm -f /tmp/profile.b64 /tmp/decoded.plist
 
           echo "PROFILE_UUID=$UUID" >> $GITHUB_ENV
           echo "TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
