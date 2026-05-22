@@ -26,6 +26,50 @@ jobs:
         working-directory: CoinFlow
         run: python3 scripts/gen_xcodeproj.py
 
+      - name: Install Apple Certificate (p12)
+        env:
+          P12_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+        run: |
+          echo "$P12_BASE64" | base64 --decode > certificate.p12
+
+          security create-keychain -p ci_temp ci_temp.keychain
+          security default-keychain -s ci_temp.keychain
+          security unlock-keychain -p ci_temp ci_temp.keychain
+
+          security import certificate.p12 \
+            -k ci_temp.keychain \
+            -P "$P12_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+
+          security set-key-partition-list -S apple-tool:,apple: -s -k ci_temp ci_temp.keychain
+
+          security list-keychains -d user -s ci_temp.keychain $(security list-keychains -d user | sed 's/"//g')
+
+          rm certificate.p12
+          echo "Keychain ready"
+
+      - name: Install Provisioning Profile
+        env:
+          PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+        run: |
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          PROFILE_PATH=~/Library/MobileDevice/Provisioning\ Profiles/coinflow.mobileprovision
+          echo "$PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          UUID=$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c "Print :UUID" /dev/stdin)
+          TEAM_ID=$(security cms -D -i "$PROFILE_PATH" | /usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" /dev/stdin)
+          echo "Profile UUID: $UUID"
+          echo "Team ID: $TEAM_ID"
+
+          # Rename to UUID-based filename (xcodebuild looks for this)
+          mv "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
+
+          # Store for later export step
+          echo "PROFILE_UUID=$UUID" >> $GITHUB_ENV
+          echo "TEAM_ID=$TEAM_ID" >> $GITHUB_ENV
+
       - name: Resolve Package Dependencies
         working-directory: CoinFlow
         run: |
@@ -33,35 +77,44 @@ jobs:
             -project CoinFlow.xcodeproj \
             -scheme CoinFlow
 
-      - name: Build for iOS Device (Unsigned)
+      - name: Archive and Export Signed IPA
         working-directory: CoinFlow
         run: |
-          xcodebuild build \
+          ARCHIVE_PATH="${{ github.workspace }}/build/CoinFlow.xcarchive"
+          EXPORT_DIR="${{ github.workspace }}/build/export"
+          EXPORT_OPTS="${{ github.workspace }}/build/ExportOptions.plist"
+
+          # Generate ExportOptions.plist
+          /usr/libexec/PlistBuddy -c "Add :method string development" "$EXPORT_OPTS"
+          /usr/libexec/PlistBuddy -c "Add :teamID string $TEAM_ID" "$EXPORT_OPTS"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles dict" "$EXPORT_OPTS"
+          /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.lemolli.coinflow.app string $PROFILE_UUID" "$EXPORT_OPTS"
+          /usr/libexec/PlistBuddy -c "Add :signingStyle string manual" "$EXPORT_OPTS"
+
+          echo "ExportOptions.plist:"
+          cat "$EXPORT_OPTS"
+
+          xcodebuild archive \
             -project CoinFlow.xcodeproj \
             -scheme CoinFlow \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            -archivePath "$ARCHIVE_PATH" \
+            CODE_SIGN_STYLE=Manual \
+            OTHER_CODE_SIGN_FLAGS="--keychain ci_temp.keychain" \
+            DEVELOPMENT_TEAM="$TEAM_ID"
 
-      - name: Find .app and create IPA
-        run: |
-          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "CoinFlow.app" -type d | head -1)
-          if [ ! -d "$APP_PATH" ]; then
-            echo "ERROR: .app not found in DerivedData"
-            find ~/Library/Developer/Xcode/DerivedData -name "*.app" -type d 2>/dev/null | head -5 || true
-            exit 1
-          fi
-          echo "App: $APP_PATH"
-          mkdir -p build/Payload
-          cp -R "$APP_PATH" build/Payload/
-          cd build
-          zip -r CoinFlow.ipa Payload/
+          xcodebuild -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_DIR" \
+            -exportOptionsPlist "$EXPORT_OPTS"
+
+          echo "IPA contents:"
+          ls -la "$EXPORT_DIR"/
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
           name: CoinFlow-iOS
-          path: build/CoinFlow.ipa
+          path: build/export/CoinFlow.ipa
           retention-days: 7
