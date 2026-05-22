@@ -94,6 +94,8 @@ jobs:
           EXPORT_DIR="${{ github.workspace }}/build/export"
           EXPORT_OPTS="${{ github.workspace }}/build/ExportOptions.plist"
 
+          mkdir -p "${{ github.workspace }}/build"
+
           # Generate ExportOptions.plist
           /usr/libexec/PlistBuddy -c "Add :method string development" "$EXPORT_OPTS"
           /usr/libexec/PlistBuddy -c "Add :teamID string $TEAM_ID" "$EXPORT_OPTS"
