@@ -56,10 +56,8 @@ jobs:
           PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
         run: |
           printf '%s' "$PROFILE_BASE64" > /tmp/profile.b64
-          echo "b64 size: $(wc -c < /tmp/profile.b64)"
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           base64 -d -i /tmp/profile.b64 -o /tmp/decoded_profile
-          echo "decoded size: $(wc -c < /tmp/decoded_profile)"
 
           # Extract plist from CMS envelope via openssl
           PROFILE_PLIST=$(openssl smime -inform der -verify -noverify -in /tmp/decoded_profile 2>/dev/null)
@@ -103,9 +101,6 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :provisioningProfiles:com.lemolli.coinflow string $PROFILE_UUID" "$EXPORT_OPTS"
           /usr/libexec/PlistBuddy -c "Add :signingStyle string manual" "$EXPORT_OPTS"
 
-          echo "ExportOptions.plist:"
-          cat "$EXPORT_OPTS"
-
           xcodebuild archive \
             -project CoinFlow.xcodeproj \
             -scheme CoinFlow \
@@ -121,9 +116,6 @@ jobs:
             -archivePath "$ARCHIVE_PATH" \
             -exportPath "$EXPORT_DIR" \
             -exportOptionsPlist "$EXPORT_OPTS"
-
-          echo "IPA contents:"
-          ls -la "$EXPORT_DIR"/
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
