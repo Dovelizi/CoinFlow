@@ -3,6 +3,10 @@
 //
 //  设计语言核心：温暖大地色系 + 大圆角 pill 形 + 游戏按键立体感 + 柔和动效。
 //  所有 token 从 animal-island-ui-style SKILL.md 精确翻译为 SwiftUI 等价物。
+//
+//  背景策略：Web demo 使用 nature SVG/JPG 纹理（home_bg.svg / content_bg_pc.jpg），
+//  iOS 端无法加载这些资源，改用从上到下"草绿→奶油白"的暖色渐变，
+//  模拟 Animal Island 游戏室外地面的绿意 + 奶油阳光感。
 
 import SwiftUI
 
@@ -30,14 +34,18 @@ enum AnimalIslandTheme {
     static let primaryBg = Color(hex: "#e6f9f6")
 
     // MARK: 文字（温暖棕色系）
-    static let textPrimary = Color(hex: "#794f27")
-    static let textBody = Color(hex: "#725d42")
-    static let textSecondary = Color(hex: "#9f927d")
-    static let textMuted = Color(hex: "#8a7b66")
-    static let textDisabled = Color(hex: "#c4b89e")
+    // iOS 移动端微调：比 web spec 暗 ~8%，补偿户外阅读和小屏对比度需求
+    static let textPrimary = Color(hex: "#6a4020")   // web: #794f27 → iOS: 暗一档，保证移动端可读
+    static let textBody = Color(hex: "#5c4332")      // web: #725d42 → iOS: 暗化
+    static let textSecondary = Color(hex: "#7d6e58")  // web: #9f927d → iOS: 暗化以通过 WCAG AA
+    static let textMuted = Color(hex: "#6b5a45")       // web: #8a7b66 → iOS: 暗化
+    static let textDisabled = Color(hex: "#b0a590")    // web: #c4b89e → iOS: 微暗
 
-    // MARK: 背景（奶油米白）
-    static let bgCanvas = Color(hex: "#f8f8f0")
+    // MARK: 背景
+    // 色阶：bgGrass（草绿顶）→ bgWarm（暖绿中）→ bgCanvas（奶油底 / 末端始终可读）
+    static let bgGrass = Color(hex: "#90c695")         // 与 demo 的 #7DC395 同族，微调更柔和
+    static let bgWarm = Color(hex: "#e8e4d0")          // 暖绿过渡
+    static let bgCanvas = Color(hex: "#f8f8f0")        // 奶油白（保留 spec；渐变底部会与此融合）
     static let bgContent = Color(red: 247/255, green: 243/255, blue: 223/255)
     static let bgSecondary = Color(hex: "#f0e8d8")
     static let bgDisabled = Color(hex: "#f0ece2")
@@ -60,6 +68,8 @@ enum AnimalIslandTheme {
     // MARK: 游戏特殊色
     static let focusYellow = Color(hex: "#ffcc00")
     static let focusYellowDark = Color(hex: "#e0b800")
+    static let sidebarActiveBg = Color(hex: "#B7C6E5")
+    static let sidebarHoverBg = Color(hex: "#d6dff0")
 
     // MARK: 3D 游戏阴影色
     static let shadowBtn = Color(hex: "#bdaea0")
@@ -83,6 +93,7 @@ extension Color {
     static var aiBgCanvas: Color { AnimalIslandTheme.bgCanvas }
     static var aiBgContent: Color { AnimalIslandTheme.bgContent }
     static var aiBgDisabled: Color { AnimalIslandTheme.bgDisabled }
+    static var aiBgSecondary: Color { AnimalIslandTheme.bgSecondary }
     static var aiBorderLight: Color { AnimalIslandTheme.borderLight }
     static var aiBorderColor: Color { AnimalIslandTheme.borderColor }
     static var aiFocusYellow: Color { AnimalIslandTheme.focusYellow }
@@ -94,13 +105,24 @@ extension Color {
     static var aiShadowInput: Color { AnimalIslandTheme.shadowInput }
 }
 
-// MARK: - 全屏背景
+// MARK: - 全屏背景（nature gradient：草绿 → 暖绿 → 奶油白）
 
 struct AnimalIslandBackground: View {
     var kind: LGAPageKind = .default
 
     var body: some View {
-        AnimalIslandTheme.bgCanvas
-            .ignoresSafeArea()
+        // 渐变：顶部从草地绿起始，经暖绿过渡，底部落在奶油白。
+        // stop 0=草绿(0%) → stop 0.35=暖绿(35%) → stop 1=奶油(100%)
+        // 这样卡片/文字所在的屏幕主体区域背景都是高可读性的浅色暖调。
+        LinearGradient(
+            stops: [
+                .init(color: AnimalIslandTheme.bgGrass, location: 0.0),
+                .init(color: AnimalIslandTheme.bgWarm, location: 0.35),
+                .init(color: AnimalIslandTheme.bgCanvas, location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .ignoresSafeArea()
     }
 }

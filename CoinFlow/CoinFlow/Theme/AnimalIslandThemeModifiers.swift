@@ -19,9 +19,11 @@ private struct AnimalIslandCardModifier: ViewModifier {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(AnimalIslandTheme.borderColor, lineWidth: 2)
+                    .strokeBorder(AnimalIslandTheme.borderLight, lineWidth: 2)
             )
-            .shadow(color: Color(red: 107/255, green: 92/255, blue: 67/255).opacity(0.42),
+            // 暖色 3D 阴影（spec: 0 4px 10px rgba(107,92,67,0.42)）
+            .compositingGroup()
+            .shadow(color: Color(red: 107/255, green: 92/255, blue: 67/255).opacity(0.35),
                     radius: 10, x: 0, y: 4)
     }
 }
@@ -39,8 +41,9 @@ private struct AnimalIslandPillModifier: ViewModifier {
                 Capsule(style: .continuous)
                     .strokeBorder(AnimalIslandTheme.borderColor, lineWidth: 2)
             )
-            .shadow(color: Color(red: 61/255, green: 52/255, blue: 40/255).opacity(0.14),
-                    radius: 10, x: 0, y: 4)
+            .compositingGroup()
+            .shadow(color: Color(red: 61/255, green: 52/255, blue: 40/255).opacity(0.16),
+                    radius: 12, x: 0, y: 5)
     }
 }
 

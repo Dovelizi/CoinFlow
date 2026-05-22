@@ -81,6 +81,12 @@ struct SettingsView: View {
         themeStore.isEnabled ? LGATheme.textSecondary : Color.inkSecondary
     }
 
+    /// 导航栏标题色（Animal Island → 暖棕；DarkLiquid → 白；Notion → 墨水黑）
+    private var navTitleColor: Color {
+        if themeStore.kind == .animalIsland { return AnimalIslandTheme.textPrimary }
+        return themeStore.isEnabled ? Color.white : Color.inkPrimary
+    }
+
     private var displayName: String {
         if FeishuConfig.isConfigured { return "CoinFlow 用户" }
         return "未配置同步"
@@ -173,7 +179,7 @@ struct SettingsView: View {
             // v5 统一 nav 标题字号（17pt PingFangSC-Semibold），主题切换仅文字色变化
             Text("设置")
                 .font(.custom("PingFangSC-Semibold", size: 17))
-                .foregroundStyle(themeStore.isEnabled ? Color.white : Color.inkPrimary)
+                .foregroundStyle(navTitleColor)
             if !embeddedInTab {
                 HStack {
                     Button { dismiss() } label: {

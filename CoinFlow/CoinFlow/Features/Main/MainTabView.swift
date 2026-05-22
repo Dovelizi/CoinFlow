@@ -282,7 +282,28 @@ struct MainTabView: View {
     /// - 按住放大状态（highlighted = true）：浅色高对比，独立浮起气泡
     @ViewBuilder
     private func indicatorShape(highlighted: Bool) -> some View {
-        if LGAThemeRuntime.isEnabled {
+        if LGAThemeRuntime.isAnimalIsland {
+            // Animal Island: 温暖大地色 indicator
+            // 静态 = 薄荷青绿半透（pill 内的选中标记）
+            // 拖动 = 奶油白浮起气泡 + 3D 游戏阴影（spec: 0 4px 10px rgba(107,92,67,0.42)）
+            Capsule()
+                .fill(highlighted
+                      ? AnimalIslandTheme.bgContent
+                      : AnimalIslandTheme.primaryColor.opacity(0.18))
+                .overlay(
+                    Capsule().strokeBorder(
+                        highlighted
+                            ? AnimalIslandTheme.borderColor
+                            : AnimalIslandTheme.primaryColor.opacity(0.4),
+                        lineWidth: highlighted ? 2 : 1)
+                )
+                .shadow(color: highlighted
+                        ? Color(red: 107/255, green: 92/255, blue: 67/255).opacity(0.35)
+                        : .clear,
+                        radius: highlighted ? 10 : 0,
+                        x: 0,
+                        y: highlighted ? 4 : 0)
+        } else if LGAThemeRuntime.isEnabled {
             Capsule()
                 .fill(highlighted
                       ? Color.white.opacity(0.22)
