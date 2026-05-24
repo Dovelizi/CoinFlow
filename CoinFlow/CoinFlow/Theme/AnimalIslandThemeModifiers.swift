@@ -10,18 +10,18 @@ import SwiftUI
 
 private struct AnimalIslandCardModifier: ViewModifier {
     var cornerRadius: CGFloat
+    var fill: Color
 
     func body(content: Content) -> some View {
         content
             .background(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .fill(AnimalIslandTheme.bgContent)
+                    .fill(fill)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .strokeBorder(AnimalIslandTheme.borderLight, lineWidth: 2)
             )
-            // 暖色 3D 阴影（spec: 0 4px 10px rgba(107,92,67,0.42)）
             .compositingGroup()
             .shadow(color: Color(red: 107/255, green: 92/255, blue: 67/255).opacity(0.35),
                     radius: 10, x: 0, y: 4)
@@ -70,8 +70,8 @@ private struct AnimalIslandChipModifier: ViewModifier {
 extension View {
 
     /// Animal Island 卡片表面
-    func _aiCard(cornerRadius: CGFloat) -> some View {
-        modifier(AnimalIslandCardModifier(cornerRadius: cornerRadius))
+    func _aiCard(cornerRadius: CGFloat, fill: Color = AnimalIslandTheme.bgContent) -> some View {
+        modifier(AnimalIslandCardModifier(cornerRadius: cornerRadius, fill: fill))
     }
 
     /// Animal Island 浮岛胶囊

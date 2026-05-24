@@ -69,8 +69,14 @@ extension Color {
         if LGAThemeRuntime.isAnimalIsland { return AnimalIslandTheme.primaryBg }
         return .accent_blue_bg
     }
-    static var textCode:        Color { .text_code }
-    static var bgCodeInline:    Color { .bg_code_inline }
+    static var textCode: Color {
+        if LGAThemeRuntime.isAnimalIsland { return AnimalIslandTheme.textSecondary }
+        return .text_code
+    }
+    static var bgCodeInline: Color {
+        if LGAThemeRuntime.isAnimalIsland { return AnimalIslandTheme.bgSecondary.opacity(0.7) }
+        return .bg_code_inline
+    }
 
     // MARK: - 语义状态色（M6+ 设计严格对照引入）
     // 与 SymbolColor.swift 中现有 hex 字面量保持值一致，作为 token 化迁移目标。

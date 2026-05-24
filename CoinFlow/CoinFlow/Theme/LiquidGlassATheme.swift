@@ -320,7 +320,7 @@ private struct CardSurfaceModifier: ViewModifier {
                         .stroke(notionStroke ?? .clear, lineWidth: notionStroke == nil ? 0 : 0.5)
                 )
         case .animalIsland:
-            content._aiCard(cornerRadius: cornerRadius)
+            content._aiCard(cornerRadius: cornerRadius, fill: notionFill)
         }
     }
 }
