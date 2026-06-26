@@ -193,14 +193,9 @@ struct MainTabView: View {
     // MARK: - Custom tab bar (浮动 indicator + 可拖拽)
 
     private var customTabBar: some View {
-        // 关键裁切链路（已验证）：
-        //  1. iOS 26 .appTabPillBackground() 用 .glassEffect(in: .capsule)，按 capsule 裁切其 content
-        //     → 解决：indicator 必须放在 .appTabPillBackground 之外
-        //  2. .fixedSize() 把 ZStack 的 layout frame 锁死为子视图最大自然尺寸（tab 主体 280×52），
-        //     即使 indicator 用 .position() 不参与 layout，渲染时也会被 fixedSize 锁死的 frame 隐式裁切
-        //     → 解决：indicator 必须放到 .fixedSize() 之后的 overlay 里 —— overlay 默认不裁切，
-        //            .position() 视图可以自由溢出 overlay 范围（凸出 tab bar 上下左右边界）
-        //  3. coordinateSpace("tabbar") 仍设在 HStack 父级，overlay 内的 indicator 仍能正确读到该坐标系
+        // indicator 放在 .background() 中（pill bg 之后），渲染在 tab 文字/图标之后（不遮挡内容）。
+        // .appTabPillBackground() 内部用 .background() 实现，后续 .background() 叠在其上。
+        // 叠加顺序（底→面）：pill 背景 → indicator → tab 文字/图标。
         HStack(spacing: NotionTheme.space3) {
             ForEach(AppTab.allCases, id: \.self) { tab in
                 tabItem(tab, selected: tab == effectiveSelectedTab)
@@ -213,15 +208,10 @@ struct MainTabView: View {
         .padding(.horizontal, NotionTheme.space4)
         .padding(.vertical, NotionTheme.space4)
         .appTabPillBackground()
+        .background(indicatorView.allowsHitTesting(false))
         .contentShape(Capsule())
         .coordinateSpace(name: "tabbar")
         .fixedSize()
-        // ⬇️ indicator 在 .fixedSize() 之后挂到 overlay —— 不受 fixedSize 锁死的 frame 限制，
-        //    放大后可以自由凸出 tab bar 上下左右四个方向（参考图独立气泡视觉）
-        .overlay(
-            indicatorView
-                .allowsHitTesting(false)
-        )
         .onPreferenceChange(TabFramesKey.self) { frames in
             self.tabFrames = frames
         }
@@ -283,26 +273,16 @@ struct MainTabView: View {
     @ViewBuilder
     private func indicatorShape(highlighted: Bool) -> some View {
         if LGAThemeRuntime.isAnimalIsland {
-            // Animal Island: 温暖大地色 indicator
-            // 静态 = 薄荷青绿半透（pill 内的选中标记）
-            // 拖动 = 奶油白浮起气泡 + 3D 游戏阴影（spec: 0 4px 10px rgba(107,92,67,0.42)）
             Capsule()
                 .fill(highlighted
-                      ? AnimalIslandTheme.bgContent
-                      : AnimalIslandTheme.primaryColor.opacity(0.18))
+                      ? AnimalIslandTheme.primaryColor.opacity(0.28)
+                      : AnimalIslandTheme.primaryColor.opacity(0.16))
                 .overlay(
                     Capsule().strokeBorder(
-                        highlighted
-                            ? AnimalIslandTheme.borderColor
-                            : AnimalIslandTheme.primaryColor.opacity(0.4),
-                        lineWidth: highlighted ? 2 : 1)
+                        highlighted ? AnimalIslandTheme.primaryColor.opacity(0.6)
+                                    : AnimalIslandTheme.borderColor.opacity(0.55),
+                        lineWidth: highlighted ? 2 : 1.5)
                 )
-                .shadow(color: highlighted
-                        ? Color(red: 107/255, green: 92/255, blue: 67/255).opacity(0.35)
-                        : .clear,
-                        radius: highlighted ? 10 : 0,
-                        x: 0,
-                        y: highlighted ? 4 : 0)
         } else if LGAThemeRuntime.isEnabled {
             Capsule()
                 .fill(highlighted
@@ -319,11 +299,11 @@ struct MainTabView: View {
             Capsule()
                 .fill(highlighted
                       ? Color.white.opacity(0.18)
-                      : Color.hoverBg.opacity(0.92))
+                      : Color.hoverBg.opacity(0.30))
                 .overlay(
                     Capsule().strokeBorder(
                         highlighted ? Color.white.opacity(0.45)
-                                    : Color.white.opacity(0.06),
+                                    : Color.white.opacity(0.10),
                         lineWidth: highlighted ? 0.7 : 0.5)
                 )
         }

@@ -48,11 +48,12 @@ extension Color {
 
     // MARK: 表面 / 悬浮色
     static var hoverBg: Color {
-        if LGAThemeRuntime.isAnimalIsland { return AnimalIslandTheme.bgContent.opacity(0.7) }
+        // AI 用 bgSecondary 暖黄褐 85% 不透明，让 chip/按钮底色与暖调渐变融合
+        if LGAThemeRuntime.isAnimalIsland { return AnimalIslandTheme.bgSecondary.opacity(0.85) }
         return .hover_bg
     }
     static var hoverBgStrong: Color {
-        if LGAThemeRuntime.isAnimalIsland { return AnimalIslandTheme.bgSecondary }
+        if LGAThemeRuntime.isAnimalIsland { return AnimalIslandTheme.borderColor.opacity(0.35) }
         return .hover_bg_strong
     }
     static var selectedBg: Color {
@@ -102,9 +103,11 @@ extension NotionTheme {
     /// Page icon size token (SKILL 中是 28pt; gen_tokens.py 当前未导出 icon scale，先在此手填)
     static let iconPage: CGFloat = 28
 
-    /// Hairline / border stroke 宽度 token。Notion 参考实现统一 0.5pt。
-    /// 未来 gen_tokens.py emitter 若导出 stroke scale，可从此处迁回 NotionTheme.swift 并删除。
-    static let borderWidth: CGFloat = 0.5
+    /// Hairline / border stroke 宽度 token。
+    /// Notion: 0.5pt hairline；Animal Island: 2pt 游戏边框（SKILL §1 边框节）。
+    static var borderWidth: CGFloat {
+        LGAThemeStore.shared.kind == .animalIsland ? 2 : 0.5
+    }
 
     /// 业务卡片圆角 token（KPI 卡 / 入口卡 / 字段组卡 / 缩略图卡）。
     /// gen_tokens.py 当前 radiusLG=6 / radiusXL=8 偏小，业务侧需 12pt / 14pt。

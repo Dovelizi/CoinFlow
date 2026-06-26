@@ -87,10 +87,10 @@ struct StatsSubNavBar: View {
         ZStack {
             VStack(spacing: 2) {
                 Text(title)
-                    .font(.custom("PingFangSC-Semibold", size: 17))
+                    .font(NotionFont.h3())
                     .foregroundStyle(Color.inkPrimary)
                 Text(subtitle)
-                    .font(.custom("PingFangSC-Regular", size: 11))
+                    .font(NotionFont.micro())
                     .foregroundStyle(Color.inkTertiary)
             }
             HStack {

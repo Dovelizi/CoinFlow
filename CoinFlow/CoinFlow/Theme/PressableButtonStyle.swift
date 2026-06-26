@@ -28,8 +28,8 @@ import SwiftUI
 /// - 按压时自身下移 2pt，阴影收缩到 1pt
 struct AnimalIslandButtonSurface: ViewModifier {
     var isPressed: Bool
-    var fill: Color = AnimalIslandTheme.bgCanvas
-    var borderColor: Color = AnimalIslandTheme.bgCanvas
+    var fill: Color = AnimalIslandTheme.bgContent
+    var borderColor: Color = AnimalIslandTheme.bgContent
     var shadowColor: Color = AnimalIslandTheme.shadowBtn
 
     func body(content: Content) -> some View {
@@ -55,8 +55,8 @@ struct AnimalIslandButtonSurface: ViewModifier {
 /// 调用方仍需自行处理 scale/opacity 动画。
 extension View {
     func aiButtonSurface(isPressed: Bool = false,
-                         fill: Color = AnimalIslandTheme.bgCanvas,
-                         borderColor: Color = AnimalIslandTheme.bgCanvas,
+                         fill: Color = AnimalIslandTheme.bgContent,
+                         borderColor: Color = AnimalIslandTheme.bgContent,
                          shadowColor: Color = AnimalIslandTheme.shadowBtn) -> some View {
         modifier(AnimalIslandButtonSurface(
             isPressed: isPressed,
@@ -77,7 +77,6 @@ struct PressableScaleStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .modifier(ConditionalAIButtonSurface(isPressed: configuration.isPressed))
             .scaleEffect(configuration.isPressed ? scale : 1.0)
             .opacity(configuration.isPressed ? pressedOpacity : 1.0)
             .animation(Motion.snap, value: configuration.isPressed)
@@ -90,13 +89,11 @@ struct PressableScaleStyle: ButtonStyle {
 // MARK: - 2. Soft style（大卡片）
 
 /// 卡片/行按下反馈：克制的 0.985 缩放，避免大块视觉跳动。
-/// Animal Island 主题时自动注入 3D 游戏按键表面。
 struct PressableSoftStyle: ButtonStyle {
     var haptic: Bool = true
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .modifier(ConditionalAIButtonSurface(isPressed: configuration.isPressed))
             .scaleEffect(configuration.isPressed ? 0.985 : 1.0)
             .opacity(configuration.isPressed ? 0.92 : 1.0)
             .animation(Motion.snap, value: configuration.isPressed)
@@ -180,11 +177,11 @@ struct PressableAccentStyle: ButtonStyle {
 // MARK: - 8. Animal Island 游戏按键 3D 立体按钮（显式使用）
 
 /// 显式指定 Animal Island 3D 游戏按键（不依赖主题开关）。
-/// 背景：bgCanvas + pill 形 + 底部 5pt 阴影 + 按压下压 2pt
+/// 背景：bgContent + pill 形 + 底部 5pt 阴影 + 按压下压 2pt
 struct AnimalIslandButtonStyle: ButtonStyle {
     var scale: CGFloat = 0.97
-    var fill: Color = AnimalIslandTheme.bgCanvas
-    var borderColor: Color = AnimalIslandTheme.bgCanvas
+    var fill: Color = AnimalIslandTheme.bgContent
+    var borderColor: Color = AnimalIslandTheme.bgContent
     var shadowColor: Color = AnimalIslandTheme.shadowBtn
 
     func makeBody(configuration: Configuration) -> some View {
@@ -202,7 +199,9 @@ struct AnimalIslandButtonStyle: ButtonStyle {
 
 // MARK: - Conditional AI wrappers（主题感知桥接）
 
-/// 仅当 Animal Island 主题激活时注入 3D 游戏按键表面；否则透传。
+/// 仅用于 accent / primary CTA 按钮：Animal Island 主题时注入 3D 游戏按键表面。
+/// 非 accent 按钮（.pressable / .pressableSoft / .pressableRow）不自动注入，
+/// 避免所有交互元素都变成 pill 形游戏按键。
 private struct ConditionalAIButtonSurface: ViewModifier {
     var isPressed: Bool
 
@@ -243,7 +242,6 @@ struct PressableModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .modifier(ConditionalAIButtonSurface(isPressed: pressed))
             .scaleEffect(pressed ? scale : 1.0)
             .opacity(pressed ? 0.92 : 1.0)
             .animation(Motion.snap, value: pressed)

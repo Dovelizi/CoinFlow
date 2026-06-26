@@ -31,11 +31,9 @@ import SwiftUI
 /// 应用全局主题枚举
 ///
 /// - notion: 现有 Notion 风格（实色扁平，浅色为主）
-/// - darkLiquid: v4 深炭灰实色（即旧版 "Dark Liquid"，并非真玻璃）
 /// - liquidGlass: iOS 26 真·液态玻璃（跟随系统亮暗，使用 .glassEffect API）
 enum AppTheme: String, CaseIterable {
     case notion
-    case darkLiquid
     case liquidGlass
     case animalIsland
 }
@@ -64,28 +62,31 @@ final class LGAThemeStore: ObservableObject {
         let defaults = UserDefaults.standard
         if let raw = defaults.string(forKey: Self.storageKey),
            let parsed = AppTheme(rawValue: raw) {
-            self.kind = parsed
+            // 迁移：旧版 darkLiquid 已删除，迁移为 liquidGlass
+            if parsed.rawValue == "darkLiquid" {
+                self.kind = .liquidGlass
+            } else {
+                self.kind = parsed
+            }
         } else if defaults.bool(forKey: Self.legacyBoolKey) {
-            // 旧版 Dark Liquid 用户：迁移到 darkLiquid
-            self.kind = .darkLiquid
+            self.kind = .liquidGlass
         } else {
             self.kind = .notion
         }
     }
 
-    /// 旧 API 兼容：等价 `kind == .darkLiquid`
+    /// 旧 API 兼容：等价 `kind == .liquidGlass`
     var isEnabled: Bool {
-        get { kind == .darkLiquid }
+        get { kind == .liquidGlass }
         set {
-            // 仅当显式 setEnabled(true/false) 才会落到旧语义
-            kind = newValue ? .darkLiquid : .notion
+            kind = newValue ? .liquidGlass : .notion
         }
     }
 
-    /// 旧 API：开关 darkLiquid（保留以兼容历史调用）
+    /// 旧 API：开关 liquidGlass（保留以兼容历史调用）
     @MainActor
     func setEnabled(_ newValue: Bool, animated: Bool = true) {
-        let target: AppTheme = newValue ? .darkLiquid : .notion
+        let target: AppTheme = newValue ? .liquidGlass : .notion
         setKind(target, animated: animated)
     }
 
@@ -105,8 +106,8 @@ final class LGAThemeStore: ObservableObject {
 
 /// 静态查询接口（非响应式，用于 ViewModifier body 内做一次性分支）
 enum LGAThemeRuntime {
-    /// 旧 API：等价 darkLiquid（保留兼容）
-    static var isEnabled: Bool { LGAThemeStore.shared.kind == .darkLiquid }
+    /// 旧 API：等价 liquidGlass（保留兼容）
+    static var isEnabled: Bool { LGAThemeStore.shared.kind == .liquidGlass }
 
     /// 新 API：当前主题枚举
     static var kind: AppTheme { LGAThemeStore.shared.kind }
@@ -302,13 +303,6 @@ private struct CardSurfaceModifier: ViewModifier {
         case .liquidGlass:
             // 真玻璃卡片：iOS 26 .glassEffect()，跟随系统亮暗
             content._lgRealCard(cornerRadius: cornerRadius)
-        case .darkLiquid:
-            // v5：LGA 模式也尊重调用方的 cornerRadius，主题切换时圆角保持一致
-            content.modifier(GlassACardModifier(
-                radius: cornerRadius,
-                highlight: lgaHighlight,
-                shadow: lgaShadow
-            ))
         case .notion:
             content
                 .background(
@@ -333,8 +327,6 @@ private struct AppTabPillBackgroundModifier: ViewModifier {
         case .liquidGlass:
             // 真玻璃浮岛：iOS 26 .glassEffect(.regular.interactive(), in: .capsule)
             content._lgRealPill()
-        case .darkLiquid:
-            content.modifier(GlassAPillModifier())
         case .notion:
             content
                 .background(
@@ -380,8 +372,6 @@ extension View {
         switch LGAThemeStore.shared.kind {
         case .liquidGlass:
             self._lgRealChip(cornerRadius: radius, tint: tint)
-        case .darkLiquid:
-            self.modifier(GlassAChipModifier(radius: radius, tint: tint))
         case .notion:
             self
         case .animalIsland:
@@ -400,8 +390,9 @@ extension Color {
     static var appCanvas: Color {
         switch LGAThemeStore.shared.kind {
         case .notion:                    return Color.canvasBG
-        case .darkLiquid, .liquidGlass:  return Color.clear
-        case .animalIsland:              return AnimalIslandTheme.bgCanvas
+        case .liquidGlass:               return Color.clear
+        // AI: 完全透明，让底层渐变无缝贯通，navBar 文字直接浮在渐变上
+        case .animalIsland:              return Color.clear
         }
     }
 
@@ -414,7 +405,6 @@ extension Color {
     static var appSheetCanvas: Color {
         switch LGAThemeStore.shared.kind {
         case .notion:       return Color.canvasBG
-        case .darkLiquid:   return LGATheme.canvas
         case .liquidGlass:  return Color.clear
         case .animalIsland: return AnimalIslandTheme.bgContent
         }
@@ -454,8 +444,6 @@ private struct ThemedSheetSurfaceModifier: ViewModifier {
                     LiquidGlassBackground(kind: kind)
                     Color.black.opacity(0.25).ignoresSafeArea()
                 }
-            case .darkLiquid:
-                LGATheme.canvas.ignoresSafeArea()
             case .notion:
                 Color.canvasBG.ignoresSafeArea()
             case .animalIsland:
@@ -515,8 +503,6 @@ private struct ThemedPageBackground: ViewModifier {
             switch store.kind {
             case .liquidGlass:
                 LiquidGlassBackground(kind: kind)
-            case .darkLiquid:
-                LiquidGlassABackground(kind: kind)
             case .notion:
                 Color.canvasBG.ignoresSafeArea()
             case .animalIsland:
@@ -545,8 +531,6 @@ struct ThemedBackgroundLayer: View {
         switch store.kind {
         case .liquidGlass:
             LiquidGlassBackground(kind: kind)
-        case .darkLiquid:
-            LiquidGlassABackground(kind: kind)
         case .notion:
             Color.canvasBG.ignoresSafeArea()
         case .animalIsland:

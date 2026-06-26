@@ -76,6 +76,16 @@ enum AnimalIslandTheme {
     static let shadowInput = Color(hex: "#d4c9b4")
     static let shadowSwitchOn = Color(hex: "#5a9e1e")
 
+    // MARK: 柔和暖调 shadow（SKILL §1 阴影节）
+    /// rgba(61, 52, 40, ...) — 所有 card / default-btn / pill 的 shadow 底色
+    static let shadowWarm = Color(red: 61/255, green: 52/255, blue: 40/255)
+    /// 0 2px 4px 0 rgba(61,52,40,0.06) — default-btn 静止 / subtle card
+    static let shadowSm = Color(red: 61/255, green: 52/255, blue: 40/255).opacity(0.06)
+    /// 0 3px 10px 0 rgba(61,52,40,0.10) — card 浮层 / default-btn hover
+    static let shadowBase = Color(red: 61/255, green: 52/255, blue: 40/255).opacity(0.10)
+    /// 0 8px 24px 0 rgba(61,52,40,0.14) — Modal / 大浮层
+    static let shadowLg = Color(red: 61/255, green: 52/255, blue: 40/255).opacity(0.14)
+
     // MARK: 动效
     static let animDefault = Animation.timingCurve(0.4, 0, 0.2, 1, duration: 0.25)
     static let animFast = Animation.easeInOut(duration: 0.15)

@@ -141,12 +141,6 @@ struct AppearanceSettingsView: View {
                     iconSystemName: "square.grid.2x2"
                 )
                 themeCard(
-                    kind: .darkLiquid,
-                    title: "Dark Liquid",
-                    subtitle: "深炭灰实色·低干扰阅读",
-                    iconSystemName: "moon.fill"
-                )
-                themeCard(
                     kind: .liquidGlass,
                     title: "Liquid Glass",
                     subtitle: "iOS 26 真·液态玻璃·跟随系统亮暗",
@@ -168,7 +162,6 @@ struct AppearanceSettingsView: View {
                            subtitle: String,
                            iconSystemName: String) -> some View {
         let isSelected = themeStore.kind == kind
-        let isDarkTheme = themeStore.kind == .darkLiquid
         let isAnimalTheme = themeStore.kind == .animalIsland
         let radius: CGFloat = 14
 
@@ -190,11 +183,11 @@ struct AppearanceSettingsView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.custom("PingFangSC-Semibold", size: 16))
-                        .foregroundStyle(isDarkTheme ? Color.white : (isAnimalTheme ? Color.aiTextPrimary : Color.inkPrimary))
+                        .foregroundStyle(isAnimalTheme ? Color.aiTextPrimary : Color.inkPrimary)
                     Text(subtitle)
                         .font(NotionFont.small())
                         .foregroundStyle(
-                            isDarkTheme ? LGATheme.textSecondary : (isAnimalTheme ? Color.aiTextSecondary : Color.inkSecondary)
+                            isAnimalTheme ? Color.aiTextSecondary : Color.inkSecondary
                         )
                         .lineLimit(2)
                 }
@@ -216,13 +209,11 @@ struct AppearanceSettingsView: View {
             .padding(.vertical, NotionTheme.space5)
             .background(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(isDarkTheme
-                          ? LGATheme.cardFill
-                          : (isAnimalTheme
-                             ? AnimalIslandTheme.bgContent
-                             : (isSelected
-                                ? LGATheme.accentSelection.opacity(0.08)
-                                : Color.surfaceOverlay)))
+                    .fill(isAnimalTheme
+                          ? AnimalIslandTheme.bgContent
+                          : (isSelected
+                             ? LGATheme.accentSelection.opacity(0.08)
+                             : Color.surfaceOverlay))
             )
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
@@ -241,9 +232,7 @@ struct AppearanceSettingsView: View {
     private func themeIconBackground(for kind: AppTheme) -> Color {
         switch kind {
         case .notion:       return Color.accentBlue.opacity(0.12)
-        case .darkLiquid:   return Color.black.opacity(0.85)
         case .liquidGlass:
-            // Liquid Glass 用 accent + 紫的混合，呼应玻璃折射感
             return Color(red: 0.36, green: 0.42, blue: 0.95).opacity(0.85)
         case .animalIsland: return AnimalIslandTheme.primaryColor.opacity(0.2)
         }
@@ -253,7 +242,6 @@ struct AppearanceSettingsView: View {
     private func themeIconForeground(for kind: AppTheme) -> Color {
         switch kind {
         case .notion:       return Color.accentBlue
-        case .darkLiquid:   return Color.white
         case .liquidGlass:  return Color.white
         case .animalIsland: return AnimalIslandTheme.primaryColor
         }
