@@ -11,9 +11,61 @@
 //  5. PressableIconStyle  ── 顶栏图标按钮：scale 0.88 + opacity 0.6（更"敲实"）
 //  6. PressableAccentStyle── 主 CTA 按钮：scale 0.96 + brightness 微暗 + medium 触觉
 //
-//  并提供 View 扩展 `.pressable()` 和 `.tappableCard()` 用于无 Button 包裹的场景。
+//  7. AnimalIslandButtonStyle ── 动森 3D 游戏按键（Capsule + 底部厚阴影 + 下压动画）
+//  8. AnimalIslandButtonSurface ── 按钮表面 ViewModifier，供 label 直接调用
+//
+//  主题桥接：Animal Island 激活时，pressableAccent / pressableSoft 自动注入 3D 游戏反馈。
 
 import SwiftUI
+
+// MARK: - 0. Animal Island 3D 游戏按钮表面 Modifier
+
+/// 给任意按钮 label 套上 Animal Island 3D 游戏按键表面。
+///
+/// Web spec 等价：
+/// - Capsule / pill 形（radius 50px）
+/// - `box-shadow: 0 5px 0 0 #bdaea0`
+/// - 按压时自身下移 2pt，阴影收缩到 1pt
+struct AnimalIslandButtonSurface: ViewModifier {
+    var isPressed: Bool
+    var fill: Color = AnimalIslandTheme.bgContent
+    var borderColor: Color = AnimalIslandTheme.bgContent
+    var shadowColor: Color = AnimalIslandTheme.shadowBtn
+
+    func body(content: Content) -> some View {
+        content
+            .background(
+                Capsule(style: .continuous)
+                    .fill(shadowColor)
+                    .offset(y: isPressed ? 1 : 5)
+            )
+            .background(
+                Capsule(style: .continuous)
+                    .fill(fill)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: 2)
+            )
+            .offset(y: isPressed ? 2 : 0)
+    }
+}
+
+/// 将 View 套上 Animal Island 游戏按键表面（底部 3D 阴影 + pill 形）。
+/// 调用方仍需自行处理 scale/opacity 动画。
+extension View {
+    func aiButtonSurface(isPressed: Bool = false,
+                         fill: Color = AnimalIslandTheme.bgContent,
+                         borderColor: Color = AnimalIslandTheme.bgContent,
+                         shadowColor: Color = AnimalIslandTheme.shadowBtn) -> some View {
+        modifier(AnimalIslandButtonSurface(
+            isPressed: isPressed,
+            fill: fill,
+            borderColor: borderColor,
+            shadowColor: shadowColor
+        ))
+    }
+}
 
 // MARK: - 1. Scale style（默认）
 
@@ -21,7 +73,6 @@ import SwiftUI
 struct PressableScaleStyle: ButtonStyle {
     var scale: CGFloat = 0.97
     var pressedOpacity: CGFloat = 0.85
-    /// 是否触发触觉反馈（仅在 down → up 完成 tap 时触发，避免拖拽连发）
     var haptic: Bool = true
 
     func makeBody(configuration: Configuration) -> some View {
@@ -30,17 +81,14 @@ struct PressableScaleStyle: ButtonStyle {
             .opacity(configuration.isPressed ? pressedOpacity : 1.0)
             .animation(Motion.snap, value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { newValue in
-                // 按下瞬间触发轻触觉（松开不再触发，避免双重反馈）
-                if newValue && haptic {
-                    Haptics.tap()
-                }
+                if newValue && haptic { Haptics.tap() }
             }
     }
 }
 
 // MARK: - 2. Soft style（大卡片）
 
-/// 卡片按下反馈：克制的 0.985 缩放，避免大块视觉跳动
+/// 卡片/行按下反馈：克制的 0.985 缩放，避免大块视觉跳动。
 struct PressableSoftStyle: ButtonStyle {
     var haptic: Bool = true
 
@@ -50,16 +98,13 @@ struct PressableSoftStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.92 : 1.0)
             .animation(Motion.snap, value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { newValue in
-                if newValue && haptic {
-                    Haptics.soft()
-                }
+                if newValue && haptic { Haptics.soft() }
             }
     }
 }
 
 // MARK: - 3. TabItem style（TabBar 胶囊项）
 
-/// TabBar 胶囊项专用：缩放更明显（0.94），透明度更深（0.7），强调"按下了"
 struct PressableTabItemStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -79,7 +124,13 @@ struct PressableRowStyle: ButtonStyle {
         configuration.label
             .background(
                 Rectangle()
-                    .fill(configuration.isPressed ? pressedFill : Color.clear)
+                    .fill(
+                        configuration.isPressed
+                            ? (LGAThemeRuntime.isAnimalIsland
+                               ? AnimalIslandTheme.primaryColor.opacity(0.12)
+                               : pressedFill)
+                            : Color.clear
+                    )
                     .animation(Motion.snap, value: configuration.isPressed)
             )
             .contentShape(Rectangle())
@@ -88,7 +139,6 @@ struct PressableRowStyle: ButtonStyle {
 
 // MARK: - 5. Icon style（顶栏 / 工具栏图标）
 
-/// 顶栏 / 工具栏的小图标按钮：缩放更"敲"（0.88）+ 透明度大幅变化（0.6）+ 轻触觉
 struct PressableIconStyle: ButtonStyle {
     var haptic: Bool = true
 
@@ -98,22 +148,22 @@ struct PressableIconStyle: ButtonStyle {
             .opacity(configuration.isPressed ? 0.6 : 1.0)
             .animation(Motion.snap, value: configuration.isPressed)
             .onChange(of: configuration.isPressed) { newValue in
-                if newValue && haptic {
-                    Haptics.tap()
-                }
+                if newValue && haptic { Haptics.tap() }
             }
     }
 }
 
 // MARK: - 6. Accent style（主 CTA 按钮）
 
-/// 主操作按钮："开启 CoinFlow"、"保存"、"立即同步" 等。比 Scale 更"重"：medium 触觉
+/// 主操作按钮。"开启 CoinFlow"、"保存"、"立即同步" 等。
+/// Animal Island 主题时自动注入 3D 游戏按键：游戏黄色底 + 底部厚阴影 + 下压动画。
 struct PressableAccentStyle: ButtonStyle {
     var scale: CGFloat = 0.96
     var pressedOpacity: CGFloat = 0.88
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .modifier(AccentAIButtonSurface(isPressed: configuration.isPressed))
             .scaleEffect(configuration.isPressed ? scale : 1.0)
             .opacity(configuration.isPressed ? pressedOpacity : 1.0)
             .brightness(configuration.isPressed ? -0.03 : 0)
@@ -124,10 +174,67 @@ struct PressableAccentStyle: ButtonStyle {
     }
 }
 
+// MARK: - 8. Animal Island 游戏按键 3D 立体按钮（显式使用）
+
+/// 显式指定 Animal Island 3D 游戏按键（不依赖主题开关）。
+/// 背景：bgContent + pill 形 + 底部 5pt 阴影 + 按压下压 2pt
+struct AnimalIslandButtonStyle: ButtonStyle {
+    var scale: CGFloat = 0.97
+    var fill: Color = AnimalIslandTheme.bgContent
+    var borderColor: Color = AnimalIslandTheme.bgContent
+    var shadowColor: Color = AnimalIslandTheme.shadowBtn
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .aiButtonSurface(
+                isPressed: configuration.isPressed,
+                fill: fill,
+                borderColor: borderColor,
+                shadowColor: shadowColor
+            )
+            .scaleEffect(configuration.isPressed ? scale : 1.0)
+            .animation(Motion.snap, value: configuration.isPressed)
+    }
+}
+
+// MARK: - Conditional AI wrappers（主题感知桥接）
+
+/// 仅用于 accent / primary CTA 按钮：Animal Island 主题时注入 3D 游戏按键表面。
+/// 非 accent 按钮（.pressable / .pressableSoft / .pressableRow）不自动注入，
+/// 避免所有交互元素都变成 pill 形游戏按键。
+private struct ConditionalAIButtonSurface: ViewModifier {
+    var isPressed: Bool
+
+    func body(content: Content) -> some View {
+        if LGAThemeRuntime.isAnimalIsland {
+            content.aiButtonSurface(isPressed: isPressed)
+        } else {
+            content
+        }
+    }
+}
+
+/// Accent 版 AI 表面：游戏黄色底（#ffcc00）+ error shadow 用于 danger
+private struct AccentAIButtonSurface: ViewModifier {
+    var isPressed: Bool
+    @ObservedObject private var store = LGAThemeStore.shared
+
+    func body(content: Content) -> some View {
+        if store.kind == .animalIsland {
+            content.aiButtonSurface(
+                isPressed: isPressed,
+                fill: AnimalIslandTheme.focusYellow,
+                borderColor: AnimalIslandTheme.focusYellow,
+                shadowColor: AnimalIslandTheme.focusYellowDark
+            )
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - View 扩展：在非 Button 场景下手动注入按下反馈
 
-/// 在 onTapGesture 等场景下使用：通过 DragGesture(minimumDistance: 0) 检测按压。
-/// 适合无法用 Button 包装的复杂 hit-test 场景（如带 swipeActions 的 row）。
 struct PressableModifier: ViewModifier {
     var scale: CGFloat = 0.985
     var haptic: Bool = true
@@ -146,15 +253,11 @@ struct PressableModifier: ViewModifier {
                             if haptic { Haptics.tap() }
                         }
                     }
-                    .onEnded { _ in
-                        pressed = false
-                    }
+                    .onEnded { _ in pressed = false }
             )
     }
 }
 
-/// TappableCard：用于卡片整体可点击的场景（不能用 Button 包，比如卡片内含 NavigationLink）。
-/// 提供与 PressableSoftStyle 一致的视觉反馈：scale 0.985 + opacity 0.92 + soft 触觉
 struct TappableCardModifier: ViewModifier {
     var enabled: Bool = true
     @State private var pressed = false
@@ -177,20 +280,16 @@ struct TappableCardModifier: ViewModifier {
                         guard enabled, !pressed else { return }
                         pressed = true
                     }
-                    .onEnded { _ in
-                        pressed = false
-                    }
+                    .onEnded { _ in pressed = false }
             )
     }
 }
 
 extension View {
-    /// 通用按下反馈（仅缩放/透明度/触觉，不修改背景）
     func pressable(scale: CGFloat = 0.985, haptic: Bool = true) -> some View {
         modifier(PressableModifier(scale: scale, haptic: haptic))
     }
 
-    /// 整张卡片可点击（同 PressableSoftStyle，但不需要 Button 包裹）
     func tappableCard(enabled: Bool = true, onTap: (() -> Void)? = nil) -> some View {
         modifier(TappableCardModifier(enabled: enabled, onTap: onTap))
     }
@@ -199,7 +298,6 @@ extension View {
 // MARK: - ButtonStyle 简写工厂
 
 extension ButtonStyle where Self == PressableScaleStyle {
-    /// 默认按下反馈：scale 0.97 + 透明度 + 触觉
     static var pressable: PressableScaleStyle { PressableScaleStyle() }
     static func pressable(haptic: Bool) -> PressableScaleStyle {
         PressableScaleStyle(haptic: haptic)
@@ -207,62 +305,32 @@ extension ButtonStyle where Self == PressableScaleStyle {
 }
 
 extension ButtonStyle where Self == PressableSoftStyle {
-    /// 卡片按下反馈：scale 0.985，更克制
     static var pressableSoft: PressableSoftStyle { PressableSoftStyle() }
 }
 
 extension ButtonStyle where Self == PressableTabItemStyle {
-    /// TabBar 胶囊项专用
     static var pressableTab: PressableTabItemStyle { PressableTabItemStyle() }
 }
 
 extension ButtonStyle where Self == PressableRowStyle {
-    /// 列表行按下反馈（仅背景色变化）
     static var pressableRow: PressableRowStyle { PressableRowStyle() }
 }
 
 extension ButtonStyle where Self == PressableIconStyle {
-    /// 顶栏 / 工具栏图标按钮
     static var pressableIcon: PressableIconStyle { PressableIconStyle() }
 }
 
 extension ButtonStyle where Self == PressableAccentStyle {
-    /// 主 CTA 按钮（保存、开启 CoinFlow、立即同步）
     static var pressableAccent: PressableAccentStyle { PressableAccentStyle() }
 }
 
-// MARK: - 7. Animal Island 游戏按键 3D 立体按钮
-
-/// 动森主题按钮：pill 形 + 底部 5pt 厚阴影 + 按下时下压 2pt
-///
-/// Web 等价效果：
-/// - 默认: `box-shadow: 0 5px 0 0 #bdaea0`
-/// - 按下: `transform: translateY(2px)` + `box-shadow: 0 1px 0 0 #bdaea0`
-struct AnimalIslandButtonStyle: ButtonStyle {
-    var scale: CGFloat = 0.97
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background(
-                Capsule(style: .continuous)
-                    .fill(AnimalIslandTheme.shadowBtn)
-                    .offset(y: configuration.isPressed ? 1 : 5)
-            )
-            .background(
-                Capsule(style: .continuous)
-                    .fill(AnimalIslandTheme.bgCanvas)
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(AnimalIslandTheme.bgCanvas, lineWidth: 2)
-            )
-            .offset(y: configuration.isPressed ? 2 : 0)
-            .scaleEffect(configuration.isPressed ? scale : 1.0)
-            .animation(Motion.snap, value: configuration.isPressed)
-    }
-}
-
 extension ButtonStyle where Self == AnimalIslandButtonStyle {
-    /// 动森主题 3D 游戏按键
     static var animalIsland: AnimalIslandButtonStyle { AnimalIslandButtonStyle() }
+    static func animalIsland(fill: Color, borderColor: Color? = nil, shadowColor: Color? = nil) -> AnimalIslandButtonStyle {
+        AnimalIslandButtonStyle(
+            fill: fill,
+            borderColor: borderColor ?? fill,
+            shadowColor: shadowColor ?? AnimalIslandTheme.shadowBtn
+        )
+    }
 }

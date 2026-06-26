@@ -193,14 +193,9 @@ struct MainTabView: View {
     // MARK: - Custom tab bar (浮动 indicator + 可拖拽)
 
     private var customTabBar: some View {
-        // 关键裁切链路（已验证）：
-        //  1. iOS 26 .appTabPillBackground() 用 .glassEffect(in: .capsule)，按 capsule 裁切其 content
-        //     → 解决：indicator 必须放在 .appTabPillBackground 之外
-        //  2. .fixedSize() 把 ZStack 的 layout frame 锁死为子视图最大自然尺寸（tab 主体 280×52），
-        //     即使 indicator 用 .position() 不参与 layout，渲染时也会被 fixedSize 锁死的 frame 隐式裁切
-        //     → 解决：indicator 必须放到 .fixedSize() 之后的 overlay 里 —— overlay 默认不裁切，
-        //            .position() 视图可以自由溢出 overlay 范围（凸出 tab bar 上下左右边界）
-        //  3. coordinateSpace("tabbar") 仍设在 HStack 父级，overlay 内的 indicator 仍能正确读到该坐标系
+        // indicator 挂到 overlay —— 不受 fixedSize 锁死的 frame 限制，
+        // 放大后可以自由凸出 tab bar 上下左右四个方向（参考图独立气泡视觉）
+        // Liquid Glass 主题的 .glassEffect() 是前景层，indicator 必须在 overlay 中才能不被玻璃遮盖
         HStack(spacing: NotionTheme.space3) {
             ForEach(AppTab.allCases, id: \.self) { tab in
                 tabItem(tab, selected: tab == effectiveSelectedTab)
@@ -216,8 +211,6 @@ struct MainTabView: View {
         .contentShape(Capsule())
         .coordinateSpace(name: "tabbar")
         .fixedSize()
-        // ⬇️ indicator 在 .fixedSize() 之后挂到 overlay —— 不受 fixedSize 锁死的 frame 限制，
-        //    放大后可以自由凸出 tab bar 上下左右四个方向（参考图独立气泡视觉）
         .overlay(
             indicatorView
                 .allowsHitTesting(false)
@@ -282,12 +275,22 @@ struct MainTabView: View {
     /// - 按住放大状态（highlighted = true）：浅色高对比，独立浮起气泡
     @ViewBuilder
     private func indicatorShape(highlighted: Bool) -> some View {
-        if LGAThemeRuntime.isEnabled {
+        if LGAThemeRuntime.isAnimalIsland {
+            Capsule()
+                .fill(highlighted
+                      ? AnimalIslandTheme.primaryColor.opacity(0.28)
+                      : AnimalIslandTheme.primaryColor.opacity(0.16))
+                .overlay(
+                    Capsule().strokeBorder(
+                        highlighted ? AnimalIslandTheme.primaryColor.opacity(0.6)
+                                    : AnimalIslandTheme.borderColor.opacity(0.55),
+                        lineWidth: highlighted ? 2 : 1.5)
+                )
+        } else if LGAThemeRuntime.isEnabled {
             Capsule()
                 .fill(highlighted
                       ? Color.white.opacity(0.22)
                       : LGATheme.dgAccent.opacity(0.14))
-                .background(.ultraThinMaterial, in: Capsule())
                 .overlay(
                     Capsule().strokeBorder(
                         highlighted ? Color.white.opacity(0.55)
@@ -298,11 +301,11 @@ struct MainTabView: View {
             Capsule()
                 .fill(highlighted
                       ? Color.white.opacity(0.18)
-                      : Color.hoverBg.opacity(0.92))
+                      : Color.hoverBg.opacity(0.30))
                 .overlay(
                     Capsule().strokeBorder(
                         highlighted ? Color.white.opacity(0.45)
-                                    : Color.white.opacity(0.06),
+                                    : Color.white.opacity(0.10),
                         lineWidth: highlighted ? 0.7 : 0.5)
                 )
         }

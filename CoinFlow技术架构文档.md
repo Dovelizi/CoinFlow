@@ -1,9 +1,9 @@
 # CoinFlow 技术架构文档
 
-> **文档版本**：v1.0（2026-05-12）
+> **文档版本**：v2.0（2026-06-27）
 > **目标读者**：iOS 开发者、技术评审、新成员 Onboarding、外部技术读者
-> **项目阶段**：Phase 1（M1–M9）+ M10（LLM 账单总结）+ M11（视觉打磨）已交付
-> **关联文档**：[`README.md`](./README.md)、[`CoinFlow-iOS-MVP技术设计.md`](./CoinFlow-iOS-MVP技术设计.md)、[`CoinFlow/PROJECT_STATE.md`](./CoinFlow/PROJECT_STATE.md)
+> **项目阶段**：Phase 1（M1–M11）已全部交付——M1–M9 基础架构、M10 LLM 账单总结、M11 App 图标与视觉打磨（含 3 套主题）
+> **关联文档**：[`README.md`](./README.md)、[`CoinFlow/PROJECT_STATE.md`](./CoinFlow/PROJECT_STATE.md)
 
 ---
 
@@ -42,28 +42,29 @@ CoinFlow 采用 **「分层架构 + SwiftUI MVVM + Repository 模式」** 的复
 | 模式 | 适用层 | 选择依据 |
 |---|---|---|
 | **分层（Layered）** | 整体 | 严格区分 UI / 应用状态 / 领域能力 / 数据，层间单向依赖；上层换主题/换 UI 框架不影响数据层 |
-| **MVVM（SwiftUI 原生）** | UI 层（Features） | SwiftUI 的 `@Published` + `ObservableObject` 天然契合 MVVM；表单双向绑定零样板 |
+| **MVVM（SwiftUI 原生）** | UI 层（Features） | iOS 26 `@Observable` 宏 + `@Bindable` 绑定 ViewModel；`@State` 管理局部 UI 状态 |
 | **Repository** | 数据层（Data） | 屏蔽 SQLCipher 底层细节，对上提供 `insert / update / list / softDelete` 等领域方法；便于单元测试 mock |
 | **Actor 隔离** | 同步队列 / 飞书客户端 | Swift Concurrency 的 actor 保证 `SyncQueue` / `FeishuBitableClient` / `FeishuTokenManager` 串行化，防止并发同时建表/刷 token |
 | **Coordinator（轻量）** | 跨 Tab 跳转 | `MainCoordinator` + `pendingAction` 解决"流水页右上 +" → "切到首页打开新建 Modal"等跨域跳转，避免 NotificationCenter 生命周期坑 |
 
 **为什么不选 VIPER / Clean Architecture？**
 - 单端、单人/小团队 iOS App，引入完整 VIPER 会增加 4–5 倍的样板代码
-- SwiftUI 的声明式特性使 ViewModel 直接持有 `@Published` 状态即可解决 90% 跨视图共享，无需 Presenter 层
+- SwiftUI 的声明式特性 + `@Observable` 宏使 ViewModel 属性变更自动驱动 View 重渲染，解决 90% 跨视图共享，无需 Presenter 层
 - MVVM 已能满足"View ↔ ViewModel ↔ Repository"的清晰 3 层
 
 #### 1.1.2 架构总览图
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│  UI 层（SwiftUI + Notion 主题）                                   │
+│  UI 层（SwiftUI + 三套主题）                                       │
 │  Features/{Main, Records, NewRecord, RecordDetail, Capture,      │
-│            Voice, Stats, Sync, Settings, Categories,             │
+│            Voice, Stats, AASplit, Sync, Settings, Categories,    │
 │            Onboarding, Common}                                   │
-│  Theme/{NotionTheme, NotionColor, NotionFont, LiquidGlass*}      │
+│  Theme/{NotionTheme, LiquidGlassATheme, AnimalIslandTheme,       │
+│         NotionColor, NotionFont, PressableButtonStyle, Motion}   │
 └────────────────────────┬────────────────────────────────────────┘
-                         │ @EnvironmentObject AppState
-                         │ @StateObject ViewModel
+                         │ @Environment(AppState.self)
+                         │ @State ViewModel
 ┌────────────────────────▼────────────────────────────────────────┐
 │  应用状态层                                                       │
 │  App/{CoinFlowApp, AppState, BiometricLockView, PrivacyShieldView}│
@@ -119,11 +120,11 @@ CoinFlow 采用 **「分层架构 + SwiftUI MVVM + Repository 模式」** 的复
 
 | 项 | 版本 / 选择                    | 备注 |
 |---|----------------------------|---|
-| **平台** | iOS 17.0+                  | SwiftUI 新 API（`PhotosPicker` / `safeAreaInset` / `presentationDetents`） |
+| **平台** | iOS 26.0+                  | SwiftUI 新 API（`PhotosPicker` / `safeAreaInset` / `presentationDetents`） |
 | **语言** | Swift 5.9+                 | Strict Concurrency / `actor` / `@MainActor` |
 | **IDE** | Xcode 26+                  | |
 | **UI 框架** | SwiftUI（100%）              | 无 UIKit View 主路径；仅在 `AmountTextFieldUIKit` / `NoteTextFieldUIKit` / `CameraPicker` 等键盘体验细节处包 UIKit |
-| **架构** | MVVM + Repository          | `ObservableObject` + `@Published` |
+| **架构** | MVVM + Repository          | `@Observable`（iOS 26）+ `@Bindable` |
 | **包管理** | Swift Package Manager      | |
 | **构建脚本** | `scripts/gen_xcodeproj.py` | 全脚本化生成 `pbxproj` 避免多人合并冲突 |
 
@@ -174,7 +175,7 @@ CoinFlow 采用 **「分层架构 + SwiftUI MVVM + Repository 模式」** 的复
 | 文件 | 职责 |
 |---|---|
 | `CoinFlowApp.swift` | `@main` 入口；ScenePhase 监听；privacy shield / biometric lock 叠加；`.preferredColorScheme(.dark)` |
-| `AppState.swift` | 全局 `ObservableObject`；串行 bootstrap；暴露 `database/seed/feishu` 三态 + `pendingSummaryPush`；用户主动操作入口（`manualSyncTickWithRevive` / `pullFromFeishu` / `wipeRemoteAndResync`） |
+| `AppState.swift` | 全局 `@Observable` 类（iOS 26）；串行 bootstrap；暴露 `database/seed/feishu` 三态 + `pendingSummaryPush`；用户主动操作入口（`manualSyncTickWithRevive` / `pullFromFeishu` / `wipeRemoteAndResync`） |
 | `BiometricLockView.swift` | 启动锁屏页（仅冷启动） |
 | `PrivacyShieldView.swift` | 应用切换器隐私模糊层（`scenePhase != .active`） |
 
@@ -211,12 +212,13 @@ Data/
 
 | 子目录 | 主要职责 |
 |---|---|
-| `Main/` | `MainTabView`（4 Tab）、`HomeMainView`、`StatsHubView` |
+| `Main/` | `MainTabView`（5 Tab）、`HomeMainView`、`StatsHubView` |
 | `Records/` | 流水列表（List/Stack/Grid 三视图）+ ViewModel |
 | `NewRecord/` | 新建账单 Modal + ViewModel + 分类选择 Sheet |
 | `RecordDetail/` | 详情 / 编辑 Sheet |
 | `Capture/` | OCR 截图记账完整链路（PhotoPicker / OCRRouter / Vision / LLM 视觉 / 规则解析 / 配额 / Intent） |
 | `Voice/` | 语音多笔记账（AudioRecorder / ASRRouter / BillsLLMParser / 7-phase Wizard VM） |
+| `AASplit/` | AA 分账（创建分账单 / 成员管理 / 分账详情 / 结算确认） |
 | `Categories/` | 分类管理（Icon 库 / 调色板 / 编辑） |
 | `Stats/` | 统计入口卡 + 子图表 + **`Summary/` M10 LLM 账单总结子模块** |
 | `Sync/` | `SyncStatusView`（同步状态页） |
@@ -228,14 +230,21 @@ Data/
 
 #### 1.3.5 `Theme/` —— 主题系统
 
+CoinFlow 支持三套主题，用户可在设置页一键切换：
+
 | 文件 | 职责 |
 |---|---|
-| `NotionTheme.swift` | 字号 / spacing / radius / motion token（默认主题） |
-| `NotionColor.swift` + `NotionTheme+Aliases.swift` | 语义色板 + alias |
+| `NotionTheme.swift` | 字号 / spacing / radius / motion token（默认主题，深色优先） |
+| `NotionColor.swift` + `NotionTheme+Aliases.swift` | 语义色板 + alias，自动适配深浅色 |
 | `NotionFont.swift` | PingFangSC 封装 + 系统回退 |
-| `LiquidGlassATheme.swift` / `LiquidGlassRealTheme.swift` | iOS 26+ Liquid Glass 实验主题（默认未启用） |
-| `PressableButtonStyle.swift` / `Motion.swift` | 通用动效 token |
+| `LiquidGlassATheme.swift` / `LiquidGlassRealTheme.swift` | iOS 26+ Liquid Glass 毛玻璃主题 |
+| `AnimalIslandTheme.swift` | 动物森友会主题 —— 温暖大地色系 + 大圆角 pill 形 + 游戏按键立体感 |
+| `AnimalIslandThemeModifiers.swift` | 动森主题 ViewModifiers（3D 按钮、卡片 fill 透传等） |
+| `AnimalIslandFont.swift` | 动森主题字体（FinkHeavy） |
+| `PressableButtonStyle.swift` / `Motion.swift` | 通用按钮动效 token |
 | `AmountTintStore.swift` | 金额染色策略（自动 / 收入绿 / 支出红 / mono） |
+
+**添加新主题的标准流程**：创建 `<Name>Theme.swift`（token enum）→ 创建 `<Name>ThemeModifiers.swift`（ViewModifiers）→ 在 `AppState.swift` 添加主题 case → 注册别名到 `NotionTheme+Aliases.swift` → 加入 `AppearanceSettingsView.swift` 选择器。
 
 **边界**：所有 Color 走 `NotionColor` / 语义别名；不允许裸写 `Color(hex:)` / 固定 `pt`。
 
@@ -556,7 +565,7 @@ PullResult { inserted, skippedExisting, decodeFailures }
            │
            ▼
         所有订阅 ViewModel
-           │ 自动刷新 @Published
+           │ 自动刷新（@Observable 追踪）
            ▼
         [View 自动重渲染]
            │
@@ -575,13 +584,15 @@ PullResult { inserted, skippedExisting, decodeFailures }
 
 #### 2.4.2 ViewModel 列表
 
-| ViewModel | 所属 View | 关键 `@Published` | 业务方法 |
+| ViewModel（均为 `@Observable`） | 所属 View | 关键 observable 属性 | 业务方法 |
 |---|---|---|---|
 | `NewRecordViewModel` | NewRecordModal | `amount/category/note/date` | `save()` |
 | `RecordDetailViewModel` | RecordDetailSheet | `editable record` | `commit() / softDelete()` |
 | `RecordsListViewModel` | RecordsListView | `records / month / search` | `loadByMonth() / searchInline()` |
 | `VoiceWizardViewModel` | VoiceRecordingSheet → VoiceWizardContainerView | `phase / bills / currentIndex / currentBill / confirmedIds / skippedIds` | `startRecording / stopRecordingAndProcess / confirmCurrent / skipCurrent / jumpTo / finalizeAllToDatabase / startFromOCRText` |
 | `StatsViewModel` | StatsHubView / StatsMainView | `kpi / categoryAgg / trend` | `recompute()` |
+| `AASplitListViewModel` | AASplitListView | `shares` | `load / createShare` |
+| `AASplitDetailViewModel` | AASplitDetailView | `share / members` | `addMember / confirmPayment` |
 | `BillsSummaryService`（actor） | BillsSummaryListView / Banner | `inflight[kind]` | `generate / syncToFeishu` |
 
 #### 2.4.3 主题与可访问性
@@ -603,20 +614,21 @@ PullResult { inserted, skippedExisting, decodeFailures }
 ```mermaid
 classDiagram
     class CoinFlowApp {
-        @StateObject appState: AppState
-        @StateObject amountTint: AmountTintStore
-        @Environment scenePhase
+        @State appState: AppState
+        @State amountTint: AmountTintStore
+        @Environment(\.scenePhase) scenePhase
         body: some Scene
     }
     class AppState {
-        @Published database: DatabaseState
-        @Published seed: SeedState
-        @Published feishu: FeishuState
-        @Published data: DataSnapshot
-        @Published bioLocked: Bool
-        @Published hasCompletedOnboarding: Bool
-        @Published syncAutoEnabled: Bool
-        @Published pendingSummaryPush: BillsSummary?
+        <<@Observable>>
+        database: DatabaseState
+        seed: SeedState
+        feishu: FeishuState
+        data: DataSnapshot
+        bioLocked: Bool
+        hasCompletedOnboarding: Bool
+        syncAutoEnabled: Bool
+        pendingSummaryPush: BillsSummary?
         +bootstrap() async
         +manualSyncTickWithRevive() async Int
         +pullFromFeishu() async Result
@@ -634,7 +646,7 @@ classDiagram
         +request(action)
         +consume(action)
     }
-    CoinFlowApp --> AppState : @StateObject
+    CoinFlowApp --> AppState : @State
     AppState ..> BiometricAuthService : uses
     AppState ..> DatabaseManager : bootstrap
     AppState ..> DefaultSeeder : bootstrap
@@ -915,8 +927,9 @@ classDiagram
         categoryName, note, missingFields
     }
     class VoiceWizardViewModel {
-        @Published phase, bills, currentIndex
-        @Published currentBill, confirmedIds, skippedIds
+        <<@Observable>>
+        phase, bills, currentIndex
+        currentBill, confirmedIds, skippedIds
         +startRecording / stopRecordingAndProcess
         +startFromOCRText
         +confirmCurrent / skipCurrent / jumpTo
@@ -967,7 +980,7 @@ sequenceDiagram
     participant Bio as BiometricAuthService
 
     U->>App: 启动 App
-    App->>State: @StateObject AppState()
+    App->>State: @State AppState()
     Note over State: init: 安装通知监听<br/>读 UserDefaults 镜像<br/>(bioLocked / onboarding / syncAuto)
     App->>State: .task { bootstrap() }
     State->>DB: bootstrap()

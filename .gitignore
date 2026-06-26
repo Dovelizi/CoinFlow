@@ -6,7 +6,6 @@
 **/*.xcworkspace/xcuserdata/
 **/.swiftpm/
 **/Package.resolved
-**/skills/
 **/CoinFlowTests/
 
 # ====== Real secrets — never commit ======
