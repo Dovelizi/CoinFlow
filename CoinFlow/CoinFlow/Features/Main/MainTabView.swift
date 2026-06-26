@@ -193,9 +193,9 @@ struct MainTabView: View {
     // MARK: - Custom tab bar (浮动 indicator + 可拖拽)
 
     private var customTabBar: some View {
-        // indicator 放在 .background() 中（pill bg 之后），渲染在 tab 文字/图标之后（不遮挡内容）。
-        // .appTabPillBackground() 内部用 .background() 实现，后续 .background() 叠在其上。
-        // 叠加顺序（底→面）：pill 背景 → indicator → tab 文字/图标。
+        // indicator 挂到 overlay —— 不受 fixedSize 锁死的 frame 限制，
+        // 放大后可以自由凸出 tab bar 上下左右四个方向（参考图独立气泡视觉）
+        // Liquid Glass 主题的 .glassEffect() 是前景层，indicator 必须在 overlay 中才能不被玻璃遮盖
         HStack(spacing: NotionTheme.space3) {
             ForEach(AppTab.allCases, id: \.self) { tab in
                 tabItem(tab, selected: tab == effectiveSelectedTab)
@@ -208,10 +208,13 @@ struct MainTabView: View {
         .padding(.horizontal, NotionTheme.space4)
         .padding(.vertical, NotionTheme.space4)
         .appTabPillBackground()
-        .background(indicatorView.allowsHitTesting(false))
         .contentShape(Capsule())
         .coordinateSpace(name: "tabbar")
         .fixedSize()
+        .overlay(
+            indicatorView
+                .allowsHitTesting(false)
+        )
         .onPreferenceChange(TabFramesKey.self) { frames in
             self.tabFrames = frames
         }
@@ -288,7 +291,6 @@ struct MainTabView: View {
                 .fill(highlighted
                       ? Color.white.opacity(0.22)
                       : LGATheme.dgAccent.opacity(0.14))
-                .background(.ultraThinMaterial, in: Capsule())
                 .overlay(
                     Capsule().strokeBorder(
                         highlighted ? Color.white.opacity(0.55)
