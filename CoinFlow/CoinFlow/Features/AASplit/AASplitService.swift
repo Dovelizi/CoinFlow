@@ -381,6 +381,7 @@ final class AASplitService {
                 aaSettlementId: ledgerId,
                 sourceKind: .aaSettlement,
                 settlementStatus: .settled,
+                billGroupId: DefaultSeeder.defaultBillGroupId,
                 createdAt: now,
                 updatedAt: now,
                 deletedAt: nil
@@ -515,6 +516,7 @@ final class AASplitService {
                 aaSettlementId: ledgerId,
                 sourceKind: .aaSettlement,
                 settlementStatus: status,
+                billGroupId: DefaultSeeder.defaultBillGroupId,
                 createdAt: now,
                 updatedAt: now,
                 deletedAt: nil

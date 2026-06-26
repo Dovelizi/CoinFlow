@@ -415,6 +415,7 @@ final class VoiceWizardViewModel: ObservableObject {
                 remoteId: nil,
                 lastSyncError: nil,
                 syncAttempts: 0,
+                billGroupId: DefaultSeeder.defaultBillGroupId,
                 createdAt: now,
                 updatedAt: now,
                 deletedAt: nil

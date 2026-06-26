@@ -95,6 +95,9 @@ struct StatsHubView: View {
                                         month: vm.month)
             }
             // StatsAABalanceView 中"最近活跃"行点击 → 直达 AA 分账详情
+            .navigationDestination(for: BillGroupDetailTarget.self) { target in
+                StatsBillGroupDetailView(billGroupId: target.billGroupId, month: target.month)
+            }
             .navigationDestination(for: AASplitListDestination.self) { dest in
                 AASplitDetailView(ledgerId: dest.ledgerId)
             }
@@ -178,6 +181,7 @@ struct StatsHubView: View {
             HubCard(id: .year,      title: "年度回顾",   icon: "calendar",                    tone: .brown),
             HubCard(id: .hourly,    title: "时段分布",   icon: "clock.fill",                  tone: .blue),
             HubCard(id: .summary,   title: "账单复盘",   icon: "sparkles",                    tone: .purple),
+            HubCard(id: .billGroup, title: "账单分组",   icon: "rectangle.3.group.fill",     tone: .brown),
         ]
     }
 
@@ -800,6 +804,7 @@ struct StatsHubView: View {
         case .year:      StatsYearView(month: vm.month)
         case .hourly:    StatsHourlyView(month: vm.month)
         case .summary:   BillsSummaryListView(showsTestSection: false)
+        case .billGroup: StatsBillGroupView(month: vm.month)
         }
     }
 }

@@ -81,6 +81,8 @@ struct Record: Identifiable, Codable, Equatable {
     /// M12 AA 重构：仅当 sourceKind == .aaSettlement 时有值，
     /// 表示该占位对应 AA 账本所处的结算阶段。
     var settlementStatus: AASettlementStatus?
+    /// M13 账单分组：每笔流水归属一个分组，默认指向"日常消费"。
+    var billGroupId: String
     // 时间戳
     var createdAt: Date
     var updatedAt: Date

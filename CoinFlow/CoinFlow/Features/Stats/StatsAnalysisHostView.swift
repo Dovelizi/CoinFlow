@@ -24,12 +24,18 @@ enum StatsAnalysisDestination: String, Hashable, CaseIterable {
     case year        // 12 月年度视图
     case hourly      // 24 小时分布
     case summary     // M10 · LLM 账单复盘历史
+    case billGroup   // M13 · 账单分组排行
 }
 
 /// 词云 / 分类排行点击 → 跳转到分类详情页时携带的目标 categoryId。
-/// 用 struct 包一层避免与其他 String navigation 冲突；Hashable 让 NavigationStack path 可识别。
 struct CategoryDetailTarget: Hashable {
     let categoryId: String
+}
+
+/// M13 账单分组点击 → 跳转到分组详情页时携带的目标 billGroupId + month。
+struct BillGroupDetailTarget: Hashable {
+    let billGroupId: String
+    let month: YearMonth
 }
 
 /// 统一空态。所有子视图在 `vm.hasAnyData == false` 时回退到此组件。

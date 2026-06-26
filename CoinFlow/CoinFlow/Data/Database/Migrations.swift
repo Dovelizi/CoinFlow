@@ -34,7 +34,7 @@ struct Migration {
 enum Migrations {
 
     /// 当前最新版本号。每次新增表/字段时 +1，并新增对应 Migration。
-    static let latestVersion: Int = 7
+    static let latestVersion: Int = 9
 
     /// 全部已知 migration（按版本号升序）。
     static let all: [Migration] = [
@@ -103,6 +103,27 @@ enum Migrations {
             statements: [
                 "ALTER TABLE record ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'normal';",
                 "ALTER TABLE record ADD COLUMN settlement_status TEXT;"
+            ],
+            tolerateDuplicateColumn: true
+        ),
+        Migration(
+            version: 8,
+            description: "M13 账单分组：新建 bill_group 表 + record 加 bill_group_id + 历史数据回填 + 索引",
+            statements: [
+                Schema.createBillGroup,
+                "ALTER TABLE record ADD COLUMN bill_group_id TEXT;",
+                "UPDATE record SET bill_group_id = 'default-bill-group' WHERE bill_group_id IS NULL AND deleted_at IS NULL;",
+                Schema.createRecordBillGroupIndex,
+                Schema.createBillGroupNameIndex
+            ],
+            tolerateDuplicateColumn: true
+        ),
+        Migration(
+            version: 9,
+            description: "M13-Fix1：bill_group 加 emoji / note 字段",
+            statements: [
+                "ALTER TABLE bill_group ADD COLUMN emoji TEXT NOT NULL DEFAULT '💰';",
+                "ALTER TABLE bill_group ADD COLUMN note TEXT;"
             ],
             tolerateDuplicateColumn: true
         )

@@ -9,6 +9,7 @@ struct RecordQuery {
     var ledgerId: String?
     var categoryId: String?
     var kind: CategoryKind?
+    var billGroupId: String?
     var fromDate: Date?
     var toDate: Date?
     var includesDeleted: Bool = false
@@ -67,7 +68,7 @@ final class SQLiteRecordRepository: RecordRepository {
     sync_status, remote_id, last_sync_error, sync_attempts,
     attachment_local_path, attachment_remote_token,
     created_at, updated_at, deleted_at,
-    aa_settlement_id, source_kind, settlement_status
+    aa_settlement_id, source_kind, settlement_status, bill_group_id
     """
 
     // MARK: - Insert
@@ -75,7 +76,7 @@ final class SQLiteRecordRepository: RecordRepository {
     func insert(_ record: Record) throws {
         let sql = """
         INSERT INTO record (\(Self.columns))
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
         try db.withHandle { handle in
             let stmt = try PreparedStatement(sql: sql, handle: handle)
@@ -97,7 +98,8 @@ final class SQLiteRecordRepository: RecordRepository {
           sync_status = ?, remote_id = ?, last_sync_error = ?, sync_attempts = ?,
           attachment_local_path = ?, attachment_remote_token = ?,
           updated_at = ?, deleted_at = ?,
-          aa_settlement_id = ?, source_kind = ?, settlement_status = ?
+          aa_settlement_id = ?, source_kind = ?, settlement_status = ?,
+          bill_group_id = ?
         WHERE id = ?;
         """
         try db.withHandle { handle in
@@ -127,7 +129,8 @@ final class SQLiteRecordRepository: RecordRepository {
             stmt.bind(23, record.aaSettlementId)
             stmt.bind(24, record.sourceKind.rawValue)
             stmt.bind(25, record.settlementStatus?.rawValue)
-            stmt.bind(26, record.id)
+            stmt.bind(26, record.billGroupId)
+            stmt.bind(27, record.id)
             try stmt.stepDone()
         }
         RecordChangeNotifier.broadcast(recordIds: [record.id])
@@ -219,6 +222,7 @@ final class SQLiteRecordRepository: RecordRepository {
         if !query.includesDeleted { where_.append("deleted_at IS NULL") }
         if query.ledgerId != nil   { where_.append("ledger_id = ?") }
         if query.categoryId != nil { where_.append("category_id = ?") }
+        if query.billGroupId != nil { where_.append("bill_group_id = ?") }
         if query.fromDate != nil   { where_.append("occurred_at >= ?") }
         if query.toDate != nil     { where_.append("occurred_at <= ?") }
         // kind 需要 JOIN category 表，M3 简化：放到内存层过滤（list 返回后再 filter）
@@ -236,6 +240,7 @@ final class SQLiteRecordRepository: RecordRepository {
             var idx: Int32 = 1
             if let lid = query.ledgerId   { stmt.bind(idx, lid); idx += 1 }
             if let cid = query.categoryId { stmt.bind(idx, cid); idx += 1 }
+            if let bgid = query.billGroupId { stmt.bind(idx, bgid); idx += 1 }
             if let f = query.fromDate     { stmt.bind(idx, f);   idx += 1 }
             if let t = query.toDate       { stmt.bind(idx, t);   idx += 1 }
             var out: [Record] = []
@@ -456,6 +461,7 @@ final class SQLiteRecordRepository: RecordRepository {
         stmt.bind(25, r.aaSettlementId)
         stmt.bind(26, r.sourceKind.rawValue)
         stmt.bind(27, r.settlementStatus?.rawValue)
+        stmt.bind(28, r.billGroupId)
     }
 
     private static func decode(_ s: PreparedStatement) -> Record {
@@ -484,6 +490,7 @@ final class SQLiteRecordRepository: RecordRepository {
             aaSettlementId: s.columnTextOrNil(24),
             sourceKind: RecordSourceKind(rawValue: s.columnText(25)) ?? .normal,
             settlementStatus: s.columnTextOrNil(26).flatMap(AASettlementStatus.init(rawValue:)),
+            billGroupId: s.columnText(27),
             createdAt: s.columnDate(21),
             updatedAt: s.columnDate(22),
             deletedAt: s.columnDateOrNil(23)

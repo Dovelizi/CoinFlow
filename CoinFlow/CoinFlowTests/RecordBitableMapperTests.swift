@@ -232,6 +232,7 @@ final class RecordBitableMapperTests: XCTestCase {
             attachmentLocalPath: nil,
             attachmentRemoteToken: nil,
             aaSettlementId: nil,
+            billGroupId: DefaultSeeder.defaultBillGroupId,
             createdAt: now,
             updatedAt: now,
             deletedAt: nil

@@ -16,6 +16,7 @@ struct NewRecordModal: View {
     @State private var showTimePicker = false
     @State private var showLedgerPicker = false
     @State private var showPayerPicker = false
+    @State private var showBillGroupPicker = false
 
     /// 金额拦截彩蛋 toast：当 vm.amountClampedAt 变化时弹一次。
     /// 文案是金额超限的轻吐槽，用 DispatchWorkItem 控制 1.6s 自动消失。
@@ -91,6 +92,13 @@ struct NewRecordModal: View {
             AAPayerPickerSheet(vm: vm)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showBillGroupPicker) {
+            BillGroupPickerSheet(
+                selectedId: vm.selectedBillGroup?.id,
+                onSelect: { vm.selectedBillGroup = $0 }
+            )
+            .presentationDetents([.medium, .large])
         }
     }
 
@@ -366,6 +374,20 @@ struct NewRecordModal: View {
                     value: lockedLedgerName,
                     showChevron: false
                 )
+            }
+
+            // M13 账单分组（仅在个人账本下显示）
+            if vm.selectedAALedger == nil {
+                innerDivider
+                Button { showBillGroupPicker = true } label: {
+                    fieldRowContent(
+                        icon: "folder",
+                        label: "账单分组",
+                        value: vm.selectedBillGroup?.name ?? "日常消费",
+                        showChevron: true
+                    )
+                }
+                .buttonStyle(.pressableRow)
             }
 
             // M12 AA 支付人：仅在 AA 账本下出现。默认"我"，可切换为账本下其他成员或新增成员。

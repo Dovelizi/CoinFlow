@@ -28,6 +28,7 @@ struct StatsMainView: View {
                         if !vm.expenseCategorySlices.isEmpty {
                             categoryDonut
                             topCategoriesList
+                        billGroupSection
                         }
                     } else {
                         emptyHint
@@ -306,6 +307,55 @@ struct StatsMainView: View {
             }
             Spacer()
             Text("¥" + StatsFormat.decimalGrouped(cat.amount))
+                .font(NotionFont.amount(size: 15))
+                .foregroundStyle(DirectionColor.amountForeground(kind: .expense))
+        }
+        .padding(.horizontal, NotionTheme.space5)
+        .padding(.vertical, 12)
+    }
+
+    // MARK: 账单分组概览
+
+    @ViewBuilder
+    private var billGroupSection: some View {
+        if !vm.billGroupSlices.isEmpty {
+            VStack(alignment: .leading, spacing: NotionTheme.space4) {
+                sectionHeader("账单分组")
+                VStack(spacing: 0) {
+                    let items = vm.billGroupSlices.prefix(5)
+                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, slice in
+                        billGroupRow(rank: idx + 1, slice: slice)
+                        if idx < items.count - 1 {
+                            Rectangle().fill(Color.divider).frame(height: 0.5)
+                                .padding(.leading, NotionTheme.space5 + 20 + NotionTheme.space5)
+                        }
+                    }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: NotionTheme.radiusCard)
+                        .fill(Color.hoverBg.opacity(0.5))
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func billGroupRow(rank: Int, slice: StatsBillGroupSlice) -> some View {
+        HStack(spacing: NotionTheme.space5) {
+            Text("\(rank)")
+                .font(.custom("PingFangSC-Semibold", size: 13))
+                .foregroundStyle(rank <= 3 ? Color.accentBlue : Color.inkTertiary)
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(slice.name)
+                    .font(NotionFont.bodyBold())
+                    .foregroundStyle(Color.inkPrimary)
+                Text("\(slice.count) 笔 · \(Int(slice.percentage * 100))%")
+                    .font(NotionFont.small())
+                    .foregroundStyle(Color.inkSecondary)
+            }
+            Spacer()
+            Text("¥" + StatsFormat.decimalGrouped(slice.amount))
                 .font(NotionFont.amount(size: 15))
                 .foregroundStyle(DirectionColor.amountForeground(kind: .expense))
         }

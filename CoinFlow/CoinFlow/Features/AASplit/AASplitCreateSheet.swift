@@ -28,11 +28,6 @@ struct AASplitCreateSheet: View {
         !trimmedName.isEmpty && trimmedName.count <= 30 && !saving
     }
 
-    private static let emojiPalette: [String] = [
-        "💰", "🍜", "🛫", "🍻", "🎉", "🏖️", "🎂", "🛍️",
-        "🚗", "🏠", "🎬", "🎮", "📚", "💼", "🥂", "🍱"
-    ]
-
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -67,32 +62,7 @@ struct AASplitCreateSheet: View {
                     }
 
                     // emoji
-                    VStack(alignment: .leading, spacing: NotionTheme.space3) {
-                        Text("封面")
-                            .font(NotionFont.small())
-                            .foregroundStyle(Color.inkSecondary)
-                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 8), spacing: 8) {
-                            ForEach(Self.emojiPalette, id: \.self) { e in
-                                Button {
-                                    Haptics.select()
-                                    emoji = e
-                                } label: {
-                                    Text(e)
-                                        .font(.system(size: 24))
-                                        .frame(width: 36, height: 36)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .fill(emoji == e ? Color.accentBlue.opacity(0.18) : Color.hoverBg)
-                                        )
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 10)
-                                                .stroke(emoji == e ? Color.accentBlue : Color.clear, lineWidth: 1.5)
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+                    EmojiPickerView(selected: $emoji)
 
                     // 备注
                     VStack(alignment: .leading, spacing: NotionTheme.space3) {

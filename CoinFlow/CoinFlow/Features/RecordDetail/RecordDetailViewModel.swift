@@ -19,7 +19,9 @@ final class RecordDetailViewModel: ObservableObject {
     @Published var amountText: String
     @Published var note: String
     @Published var selectedCategory: Category?
+    @Published var selectedBillGroup: BillGroup?
     @Published private(set) var availableCategories: [Category] = []
+    @Published var availableBillGroups: [BillGroup] = []
     @Published private(set) var saveError: String?
 
     /// 拦截原因（与 AmountInputGate 共用类型）；UI 监听 amountClampedAt 显示红字 + 彩蛋 toast
@@ -37,6 +39,7 @@ final class RecordDetailViewModel: ObservableObject {
         self.amountText = AmountFormatter.display(record.amount)
         self.note = record.note ?? ""
         loadCategoryAndDirection()
+        loadBillGroups()
     }
 
     private func loadCategoryAndDirection() {
@@ -48,6 +51,13 @@ final class RecordDetailViewModel: ObservableObject {
                 .list(kind: cat.kind, includeDeleted: false) {
                 availableCategories = cats
             }
+        }
+    }
+
+    private func loadBillGroups() {
+        if let groups = try? SQLiteBillGroupRepository.shared.list(includeDeleted: false) {
+            availableBillGroups = groups
+            selectedBillGroup = groups.first { $0.id == original.billGroupId }
         }
     }
 
@@ -136,6 +146,8 @@ final class RecordDetailViewModel: ObservableObject {
         // 备注：空字符串与 nil 视为等价
         let normalizedNote = note.isEmpty ? nil : note
         if normalizedNote != original.note { return true }
+        // 账单分组
+        if selectedBillGroup?.id != original.billGroupId { return true }
         return false
     }
 
@@ -156,6 +168,7 @@ final class RecordDetailViewModel: ObservableObject {
         var updated = original
         updated.amount = amount
         updated.categoryId = cat.id
+        updated.billGroupId = selectedBillGroup?.id ?? DefaultSeeder.defaultBillGroupId
         updated.note = note.isEmpty ? nil : note
         updated.syncStatus = .pending
         updated.syncAttempts = 0

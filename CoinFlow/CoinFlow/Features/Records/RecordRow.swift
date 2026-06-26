@@ -141,13 +141,12 @@ struct RecordRow: View {
     }
 
     private var sourceText: String {
-        switch record.source {
-        case .manual:      return "手动"
-        case .ocrVision:   return "本地OCR"
-        case .ocrAPI:      return "OCR-API"
-        case .ocrLLM:      return "大模型"
-        case .voiceLocal:  return "本地语音"
-        case .voiceCloud:  return "云端语音"
+        if record.sourceKind == .aaSettlement {
+            return "AA 分账"
         }
+        if let bg = try? SQLiteBillGroupRepository.shared.find(id: record.billGroupId) {
+            return bg.name
+        }
+        return "日常消费"
     }
 }

@@ -58,6 +58,15 @@ struct StatsHourSlice: Identifiable, Equatable {
     let count: Int
 }
 
+/// M13 账单分组聚合切片。
+struct StatsBillGroupSlice: Identifiable, Equatable {
+    let id: String          // billGroupId
+    let name: String
+    let amount: Decimal
+    let count: Int
+    var percentage: Double  // 0~1
+}
+
 /// 备注词频。
 struct StatsKeyword: Identifiable, Equatable {
     let id: String
@@ -122,6 +131,8 @@ final class StatsViewModel: ObservableObject {
     @Published private(set) var saveRateHistory: [(month: String, rate: Double)] = []
 
     // ----- 派生：备注词频（本月） -----
+    /// M13 账单分组切片（本月支出，按分组聚合）
+    @Published private(set) var billGroupSlices: [StatsBillGroupSlice] = []
     @Published private(set) var keywords: [StatsKeyword] = []
 
     // ----- 派生：StatsHub 卡片预览（一次性算好，View 只读） -----
@@ -309,6 +320,9 @@ final class StatsViewModel: ObservableObject {
             return ("\(ym.month)月", max(0, rate))
         }
 
+        // ---- 账单分组排行（本月支出） ----
+        billGroupSlices = buildBillGroupSlices(from: curRecords)
+
         // ---- 词频（本月备注） ----
         keywords = buildKeywords(records: curRecords)
     }
@@ -341,6 +355,30 @@ final class StatsViewModel: ObservableObject {
                 count: s.count,
                 percentage: pct
             )
+        }
+        .sorted { $0.amount > $1.amount }
+    }
+
+    /// 按 billGroupId 聚合本月支出流水。
+    private func buildBillGroupSlices(from records: [Record]) -> [StatsBillGroupSlice] {
+        let expenseRecords = records.filter { kind(for: $0) == .expense }
+        guard !expenseRecords.isEmpty else { return [] }
+        var byGroup: [String: (amount: Decimal, count: Int)] = [:]
+        for r in expenseRecords {
+            var s = byGroup[r.billGroupId] ?? (0, 0)
+            s.amount += r.amount
+            s.count += 1
+            byGroup[r.billGroupId] = s
+        }
+        let bgRepo = SQLiteBillGroupRepository.shared
+        let total = expenseRecords.map(\.amount).reduce(Decimal(0), +)
+        let totalDouble = (total as NSDecimalNumber).doubleValue
+        return byGroup.compactMap { (bgId, s) -> StatsBillGroupSlice? in
+            let name = (try? bgRepo.find(id: bgId))?.name ?? "未知分组"
+            let pct = totalDouble > 0
+                ? (s.amount as NSDecimalNumber).doubleValue / totalDouble
+                : 0
+            return StatsBillGroupSlice(id: bgId, name: name, amount: s.amount, count: s.count, percentage: pct)
         }
         .sorted { $0.amount > $1.amount }
     }
@@ -512,6 +550,15 @@ final class StatsViewModel: ObservableObject {
             dict[.hourly] = StatsCardPreview(
                 heroValue: peak.map { String(format: "%02d:00", $0.hour) } ?? "—",
                 insight: peak.map { "高峰时段 · ¥" + StatsFormat.decimalGrouped($0.amount) } ?? "暂无数据"
+            )
+        }
+
+        // billGroup：账单分组排行
+        do {
+            let top = billGroupSlices.first
+            dict[.billGroup] = StatsCardPreview(
+                heroValue: top.map { "¥" + StatsFormat.decimalGrouped($0.amount) } ?? "—",
+                insight: top.map { "\($0.name) · \($0.count) 笔" } ?? "共 \(billGroupSlices.count) 个分组"
             )
         }
 

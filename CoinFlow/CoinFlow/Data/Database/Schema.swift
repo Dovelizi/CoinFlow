@@ -247,6 +247,34 @@ enum Schema {
         WHERE deleted_at IS NULL;
     """
 
+    // MARK: - v8 账单分组（M13）
+
+    static let createBillGroup = """
+    CREATE TABLE IF NOT EXISTS bill_group (
+        id         TEXT PRIMARY KEY,
+        name       TEXT NOT NULL,
+        emoji      TEXT NOT NULL DEFAULT '💰',
+        note       TEXT,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER
+    );
+    """
+
+    static let createRecordBillGroupIndex = """
+    CREATE INDEX IF NOT EXISTS idx_record_bill_group
+        ON record(bill_group_id)
+        WHERE deleted_at IS NULL;
+    """
+
+    static let createBillGroupNameIndex = """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_bill_group_name
+        ON bill_group(name)
+        WHERE deleted_at IS NULL;
+    """
+
     // MARK: - 聚合：v1 全部建表 + 索引语句
 
     /// 按依赖顺序排列：voice_session 必须先于 record（record 引用其 id）。
@@ -267,6 +295,7 @@ enum Schema {
         "ledger", "category", "voice_session",
         "record", "quota_usage", "user_settings",
         "bills_summary",
-        "aa_member", "aa_share"
+        "aa_member", "aa_share",
+        "bill_group"
     ]
 }

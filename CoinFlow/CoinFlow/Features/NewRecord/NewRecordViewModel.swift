@@ -60,6 +60,10 @@ final class NewRecordViewModel: ObservableObject {
     /// 用于触发金额为空时的"请输入金额"红字 + 红框（设计稿 error-light.png 行为）。
     @Published private(set) var attemptedSave: Bool = false
 
+    /// M13 账单分组
+    @Published var selectedBillGroup: BillGroup?
+    @Published var availableBillGroups: [BillGroup] = []
+
     /// 当前方向下的可选分类（带预设和用户自定义）
     @Published private(set) var availableCategories: [Category] = []
 
@@ -69,6 +73,7 @@ final class NewRecordViewModel: ObservableObject {
 
     init(ledgerId: String = DefaultSeeder.defaultLedgerId) {
         self.ledgerId = ledgerId
+        loadBillGroups()
         loadCategories()
         // 若初始 ledgerId 直接就是一个 AA 账本（lockedLedgerId 路径，从 AA 详情页"+ 添加流水"进入），
         // 立即把它当作 selectedAALedger 装载，初始化 payer 列表和默认值（"我"）。
@@ -148,6 +153,17 @@ final class NewRecordViewModel: ObservableObject {
         // 切换方向时如果当前分类不属于新方向，自动清空让用户重选
         if let sel = selectedCategory, sel.kind != k {
             selectedCategory = nil
+        }
+    }
+
+    // MARK: - Bill Groups
+
+    private func loadBillGroups() {
+        do {
+            availableBillGroups = try SQLiteBillGroupRepository.shared.list(includeDeleted: false)
+            selectedBillGroup = availableBillGroups.first { $0.id == DefaultSeeder.defaultBillGroupId }
+        } catch {
+            saveError = error.localizedDescription
         }
     }
 
@@ -278,6 +294,7 @@ final class NewRecordViewModel: ObservableObject {
         // M11 AA 分账：选中 AA 账本时覆盖 ledgerId 与 payerUserId。
         // payerUserId 写入 AAMember.id：默认是 me-<ledgerId>（"我"在该账本下的成员 id），
         // 用户可在 UI 上切换为账本下其他成员，或新增成员（输入昵称即时落库）。
+        let resolvedBillGroupId: String = selectedBillGroup?.id ?? DefaultSeeder.defaultBillGroupId
         let resolvedLedgerId: String = selectedAALedger?.id ?? self.ledgerId
         var resolvedPayerUserId: String? = nil
         if let aa = selectedAALedger {
@@ -322,6 +339,7 @@ final class NewRecordViewModel: ObservableObject {
             attachmentLocalPath: attachmentPath,
             attachmentRemoteToken: nil,
             aaSettlementId: nil,
+            billGroupId: resolvedBillGroupId,
             createdAt: now,
             updatedAt: now,
             deletedAt: nil

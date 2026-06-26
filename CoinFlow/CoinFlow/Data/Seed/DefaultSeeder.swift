@@ -24,6 +24,7 @@ enum DefaultSeeder {
 
     /// 默认账本的固定 id。所有「未指定账本」的流水都归属于此。
     static let defaultLedgerId = "default-ledger"
+    static let defaultBillGroupId = "default-bill-group"
 
     struct PresetCategory {
         let id: String
@@ -128,11 +129,30 @@ enum DefaultSeeder {
                 result.categoriesAdded += 1
             }
         }
+        // 3. 默认账单分组
+        let bgRepo = SQLiteBillGroupRepository.shared
+        if try bgRepo.find(id: defaultBillGroupId) == nil {
+            let bg = BillGroup(
+                id: defaultBillGroupId,
+                name: "日常消费",
+                emoji: "💰",
+                note: nil,
+                sortOrder: 0,
+                isDefault: true,
+                createdAt: Date(),
+                updatedAt: Date(),
+                deletedAt: nil
+            )
+            try bgRepo.insert(bg)
+            result.billGroupCreated = true
+        }
+
         return result
     }
 
     struct SeedResult {
         var ledgerCreated: Bool
         var categoriesAdded: Int
+        var billGroupCreated: Bool = false
     }
 }

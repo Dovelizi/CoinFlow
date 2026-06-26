@@ -16,6 +16,7 @@ struct RecordDetailSheet: View {
     @StateObject private var vm: RecordDetailViewModel
     @Environment(\.dismiss) private var dismiss
     @State private var showCategoryPicker = false
+    @State private var showBillGroupPicker = false
     /// 删除确认弹窗显隐（ActionSheet / confirmationDialog）
     @State private var showDeleteConfirm = false
     /// 「未保存就关闭」二次确认弹窗
@@ -66,6 +67,7 @@ struct RecordDetailSheet: View {
                     if isReadOnly { readOnlyBanner }
                     amountField
                     categoryField
+                    billGroupField
                     noteField
                     AttachmentPreviewSection(record: vm.original)
                     AASettlementLinkSection(record: vm.original)
@@ -131,6 +133,13 @@ struct RecordDetailSheet: View {
                     categories: vm.availableCategories,
                     selectedId: vm.selectedCategory?.id,
                     onSelect: { vm.selectCategory($0) }
+                )
+                .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showBillGroupPicker) {
+                BillGroupPickerSheet(
+                    selectedId: vm.selectedBillGroup?.id,
+                    onSelect: { vm.selectedBillGroup = $0 }
                 )
                 .presentationDetents([.medium, .large])
             }
@@ -343,6 +352,30 @@ struct RecordDetailSheet: View {
                     icon: vm.selectedCategory?.icon ?? "questionmark",
                     label: "分类",
                     value: vm.selectedCategory?.name ?? "未分类",
+                    showChevron: true
+                )
+            }
+            .buttonStyle(.pressableRow)
+        }
+    }
+
+    // MARK: - Bill Group
+
+    @ViewBuilder
+    private var billGroupField: some View {
+        if isReadOnly {
+            fieldRow(
+                icon: "folder",
+                label: "账单分组",
+                value: vm.selectedBillGroup?.name ?? "日常消费",
+                showChevron: false
+            )
+        } else {
+            Button { showBillGroupPicker = true } label: {
+                fieldRow(
+                    icon: "folder",
+                    label: "账单分组",
+                    value: vm.selectedBillGroup?.name ?? "日常消费",
                     showChevron: true
                 )
             }

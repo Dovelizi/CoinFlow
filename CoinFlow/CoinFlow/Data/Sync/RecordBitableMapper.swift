@@ -125,6 +125,7 @@ enum RecordBitableMapper {
             // AA 回写流水，这次拉取会被 RemoteRecordPuller 用 remoteId 命中已存在策略
             // 跳过，不会覆盖本地 aaSettlementId（参见 RemoteRecordPuller 的 dedupe 逻辑）。
             aaSettlementId: nil,
+            billGroupId: DefaultSeeder.defaultBillGroupId,
             createdAt: createdAt,
             updatedAt: updatedAt,
             deletedAt: deletedAt
