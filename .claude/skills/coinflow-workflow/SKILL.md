@@ -1,7 +1,7 @@
 ---
 name: coinflow-workflow
-description: CoinFlow 项目开发流程规范 — 三个命令（/plan /feature /bugfix）、三角色协作（BA/DEV/QA）
-version: 2.2.0
+description: CoinFlow 项目开发流程规范 — 四个命令（/plan /feature /bugfix /polish）、三角色协作
+version: 2.3.0
 ---
 
 # CoinFlow 开发流程规范
@@ -13,6 +13,7 @@ version: 2.2.0
 | `/plan` | 需求方向讨论，不进开发 | 用户 + AI |
 | `/feature` | 新需求完整交付 | BA → DEV → QA |
 | `/bugfix` | Bug 修复 | DEV → QA |
+| `/polish` | UI 调整与细节优化 | UI → DEV → QA |
 
 所有命令执行前必须先做**历史检查**（扫描 `docs/features/` + `docs/bugfixes/`），避免冲突与重复修复。
 
@@ -43,3 +44,4 @@ version: 2.2.0
 | 需求澄清（/feature） | `/brainstorming` |
 | 编码原则 | `andrej-karpathy-skills:karpathy-guidelines` |
 | 架构参考 | `coinflow-patterns` |
+| UI 设计（/polish） | `ecc:frontend-design-direction` |

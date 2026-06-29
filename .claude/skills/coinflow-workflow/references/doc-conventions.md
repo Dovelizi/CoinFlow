@@ -4,7 +4,7 @@
 
 ```
 docs/
-├── PROJECT_PLAN.md                    # 总规划（需求+Bug 索引）
+├── PROJECT_PLAN.md                    # 总规划（需求+Bug+Polish 索引）
 ├── features/                          # /feature 命令产出
 │   └── <feature-name>/                # kebab-case
 │       ├── BA/
@@ -15,14 +15,23 @@ docs/
 │       └── QA/
 │           ├── test-cases.md
 │           └── test-report.md
-└── bugfixes/                          # /bugfix 命令产出
-    └── <bug-name>/                    # kebab-case
+├── bugfixes/                          # /bugfix 命令产出
+│   └── <bug-name>/                    # kebab-case
+│       ├── DEV/
+│       │   ├── root-cause.md
+│       │   └── fix-notes.md
+│       └── QA/
+│           ├── test-cases.md
+│           └── verification-report.md
+└── polish/                            # /polish 命令产出
+    └── <polish-name>/                 # kebab-case
+        ├── UI/
+        │   └── design-spec.md
         ├── DEV/
-        │   ├── root-cause.md
-        │   └── fix-notes.md
+        │   └── implementation-notes.md
         └── QA/
-            ├── test-cases.md
-            └── verification-report.md
+            ├── visual-diff.md
+            └── test-report.md
 ```
 
 ## 文档模板
@@ -55,6 +64,43 @@ docs/
 ## 复现步骤
 ## 根因定位
 ## 影响范围
+```
+
+### UI design-spec.md（/polish）
+```markdown
+# <名称> · UI 设计规范
+## 现状分析（before）
+## 改造方案
+
+### 方案 A（推荐）/ 方案 B / ...
+| 维度 | 规范 |
+|------|------|
+| 布局 | 间距/对齐/层级 |
+| 颜色 | 前景/背景/边框 · light/dark |
+| 字体 | 字号/字重/行高 |
+| 形状 | 圆角/阴影/边框 |
+| 动效 | 过渡类型/时长/触发条件 |
+| 交互 | 按压反馈/手势区域/状态态 |
+| 主题 | Notion/Liquid Glass/Animal Island |
+
+## 用户确认
+- [ ] 方案确认
+```
+
+### QA visual-diff.md（/polish）
+```markdown
+# <名称> · 视觉差异报告
+## 对比
+
+| 区域 | Before | After | 差异 | 状态 |
+|------|--------|-------|------|------|
+| 截图 → | | | ⬜ |
+
+## 测量清单
+- [ ] 间距 ≤2pt 偏差
+- [ ] 字号匹配设计规范
+- [ ] 动效时长/曲线一致
+- [ ] 三主题无异常
 ```
 
 ### QA test-cases.md
