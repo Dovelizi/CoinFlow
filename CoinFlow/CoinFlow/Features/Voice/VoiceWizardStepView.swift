@@ -23,6 +23,8 @@ struct VoiceWizardStepView: View {
     @State private var showCategoryPicker = false
     /// M11+：账本选择器（AALedgerPickerSheet）显隐
     @State private var showLedgerPicker = false
+    /// M13+：账单分组选择器显隐
+    @State private var showBillGroupPicker = false
 
     /// 金额输入框的当前文本（与 vm.currentBill.amount 双向同步）。
     /// 设计原因：vm.currentBill.amount 是 Decimal?，View 层 TextField 需要 String，
@@ -194,6 +196,13 @@ struct VoiceWizardStepView: View {
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showBillGroupPicker) {
+            BillGroupPickerSheet(
+                selectedId: vm.selectedBillGroup?.id,
+                onSelect: { vm.selectedBillGroup = $0 }
+            )
+            .presentationDetents([.medium, .large])
         }
     }
 
@@ -471,6 +480,10 @@ struct VoiceWizardStepView: View {
             timeRow
             rowDivider
             ledgerRow
+            if vm.selectedAALedger == nil {
+                rowDivider
+                billGroupRow
+            }
         }
         .background(Color.hoverBg.opacity(0.5))
         .cornerRadius(NotionTheme.radiusLG)
@@ -576,6 +589,37 @@ struct VoiceWizardStepView: View {
         .buttonStyle(.pressableSoft)
         .accessibilityLabel("账本：\(displayName)")
         .accessibilityHint("点击切换账本")
+    }
+
+    /// M13+：账单分组行（仅个人账本下显示）
+    private var billGroupRow: some View {
+        Button {
+            showBillGroupPicker = true
+        } label: {
+            HStack(spacing: NotionTheme.space5) {
+                Image(systemName: "folder")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(Color.inkSecondary)
+                    .frame(width: 24)
+                Text("账单分组")
+                    .font(NotionFont.body())
+                    .foregroundStyle(Color.inkSecondary)
+                Spacer()
+                Text(vm.selectedBillGroup?.name ?? "日常消费")
+                    .font(NotionFont.body())
+                    .foregroundStyle(Color.inkPrimary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(Color.inkTertiary)
+            }
+            .padding(.horizontal, NotionTheme.space5)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.pressableSoft)
+        .accessibilityLabel("账单分组：\(vm.selectedBillGroup?.name ?? "日常消费")")
+        .accessibilityHint("点击切换账单分组")
     }
 
     private var rowDivider: some View {

@@ -52,6 +52,9 @@ final class VoiceWizardViewModel: ObservableObject {
     /// VoiceWizardStepView 顶部"账本"行点击弹 AALedgerPickerSheet 修改此值。
     @Published var selectedAALedger: Ledger?
 
+    /// M13+：账单分组选择（仅在个人账本下生效，AA 账本下不显示）。
+    @Published var selectedBillGroup: BillGroup?
+
     // MARK: - Deps
 
     private let audioRecorder = AudioRecorder()
@@ -114,6 +117,8 @@ final class VoiceWizardViewModel: ObservableObject {
         }
         // 3. 准备分类白名单（支出 + 收入）
         loadCategoryWhitelist()
+        // 加载账单分组
+        loadBillGroups()
         // 4. 重置状态
         sessionId = UUID().uuidString
         bills = []
@@ -281,6 +286,8 @@ final class VoiceWizardViewModel: ObservableObject {
     func startFromOCRText(_ ocrText: String, ocrEngine: OCREngineKind? = nil) async {
         // 1. 分类白名单
         loadCategoryWhitelist()
+        // 加载账单分组
+        loadBillGroups()
         // 2. 重置状态
         sessionId = UUID().uuidString
         bills = []
@@ -415,7 +422,7 @@ final class VoiceWizardViewModel: ObservableObject {
                 remoteId: nil,
                 lastSyncError: nil,
                 syncAttempts: 0,
-                billGroupId: DefaultSeeder.defaultBillGroupId,
+                billGroupId: selectedBillGroup?.id ?? DefaultSeeder.defaultBillGroupId,
                 createdAt: now,
                 updatedAt: now,
                 deletedAt: nil
@@ -474,6 +481,12 @@ final class VoiceWizardViewModel: ObservableObject {
         let prev = s.error ?? ""
         s.error = prev.isEmpty ? msg : prev + " | " + msg
         try? repo.update(s)
+    }
+
+    private func loadBillGroups() {
+        if let groups = try? SQLiteBillGroupRepository.shared.list(includeDeleted: false) {
+            selectedBillGroup = groups.first { $0.id == DefaultSeeder.defaultBillGroupId }
+        }
     }
 
     private func loadCategoryWhitelist() {

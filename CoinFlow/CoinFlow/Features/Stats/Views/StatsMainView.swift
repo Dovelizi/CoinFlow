@@ -410,28 +410,36 @@ struct StatsDonutChart: View {
     let items: [StatsCategorySlice]
     let scheme: ColorScheme
 
+    private let diameter: CGFloat = 120
+    private let lineWidth: CGFloat = 20
+    private var radius: CGFloat { (diameter - lineWidth) / 2 }
+
     var body: some View {
         ZStack {
             ForEach(Array(segments().enumerated()), id: \.offset) { _, seg in
                 Path { path in
-                    path.addArc(center: CGPoint(x: 70, y: 70),
-                                radius: 56,
+                    path.addArc(center: CGPoint(x: diameter / 2, y: diameter / 2),
+                                radius: radius,
                                 startAngle: .degrees(seg.start - 90),
                                 endAngle:   .degrees(seg.end - 90),
                                 clockwise: false)
                 }
-                .strokedPath(StrokeStyle(lineWidth: 22, lineCap: .butt))
+                .strokedPath(StrokeStyle(lineWidth: lineWidth, lineCap: .butt))
                 .foregroundColor(seg.color)
             }
-            VStack(spacing: 0) {
+            VStack(spacing: 2) {
                 Text("总支出")
-                    .font(.custom("PingFangSC-Regular", size: 10))
+                    .font(.custom("PingFangSC-Regular", size: 9))
                     .foregroundStyle(Color.inkTertiary)
                 Text("¥" + StatsFormat.decimalGrouped(total()))
-                    .font(.system(size: 17, weight: .semibold, design: .rounded).monospacedDigit())
+                    .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
                     .foregroundStyle(Color.inkPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
             }
+            .frame(width: diameter - lineWidth - 8)
         }
+        .frame(width: diameter, height: diameter)
     }
 
     private struct Seg {

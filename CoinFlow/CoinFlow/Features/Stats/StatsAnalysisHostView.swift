@@ -38,6 +38,51 @@ struct BillGroupDetailTarget: Hashable {
     let month: YearMonth
 }
 
+/// 通用月份选择器 Sheet（近 24 个月列表，按月倒序）。
+/// 选中后通过 @Binding 写回 → ViewModel.month.didSet 自动 reload。
+struct MonthPickerSheet: View {
+    @Binding var selected: YearMonth
+    @Environment(\.dismiss) private var dismiss
+
+    private var months: [YearMonth] {
+        let now = YearMonth.current
+        return (0..<24).map { now.adding(months: -$0) }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(months, id: \.idString) { ym in
+                    Button {
+                        selected = ym
+                        dismiss()
+                    } label: {
+                        HStack {
+                            Text(StatsFormat.ymSubtitle(ym))
+                                .font(NotionFont.body())
+                                .foregroundStyle(Color.inkPrimary)
+                            Spacer()
+                            if ym == selected {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Color.accentBlue)
+                            }
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("选择月份")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("取消") { dismiss() }
+                }
+            }
+        }
+    }
+}
+
 /// 统一空态。所有子视图在 `vm.hasAnyData == false` 时回退到此组件。
 struct StatsEmptyState: View {
     let title: String

@@ -17,8 +17,15 @@ struct StatsBillGroupDetailView: View {
         (try? SQLiteBillGroupRepository.shared.find(id: billGroupId))?.name ?? "账单分组"
     }
 
+    /// 仅统计当月支出记录，与 StatsBillGroupView 列表页 `buildBillGroupSlices` 口径一致
     private var filteredRecords: [Record] {
-        vm.allRecords.filter { $0.billGroupId == billGroupId && $0.deletedAt == nil }
+        let monthInterval = vm.month.dateInterval(in: Calendar.current)
+        return vm.allRecords.filter { r in
+            r.billGroupId == billGroupId
+            && r.deletedAt == nil
+            && (vm.categoriesById[r.categoryId]?.kind ?? .expense) == .expense
+            && monthInterval.contains(r.occurredAt)
+        }
     }
 
     private var categorySlices: [StatsCategorySlice] {
@@ -105,6 +112,8 @@ struct StatsBillGroupDetailView: View {
             Text("¥\(StatsFormat.decimalGrouped(cat.amount))")
                 .font(.system(size: 12, weight: .medium, design: .rounded).monospacedDigit())
                 .foregroundStyle(Color.inkSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
     }
 

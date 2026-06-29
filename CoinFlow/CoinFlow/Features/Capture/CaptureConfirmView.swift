@@ -47,6 +47,8 @@ struct CaptureConfirmView: View {
     @State private var showNoteEditor = false
     /// M11+：账本选择器（AALedgerPickerSheet）显隐
     @State private var showLedgerPicker = false
+    /// M13+：账单分组选择器显隐
+    @State private var showBillGroupPicker = false
     /// 键盘焦点枚举（官方最佳实践：单一 FocusState + 外层单一 toolbar）
     private enum Field: Hashable { case amount }
     /// 金额输入框 focus 状态（失焦触发校验）
@@ -202,6 +204,13 @@ struct CaptureConfirmView: View {
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showBillGroupPicker) {
+            BillGroupPickerSheet(
+                selectedId: vm.selectedBillGroup?.id,
+                onSelect: { vm.selectedBillGroup = $0 }
+            )
+            .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showTimePicker) {
             timePickerSheet
@@ -500,6 +509,10 @@ struct CaptureConfirmView: View {
             categoryRow
             innerDivider
             ledgerRow
+            if vm.selectedAALedger == nil {
+                innerDivider
+                billGroupRow
+            }
         }
         .background(
             RoundedRectangle(cornerRadius: NotionTheme.radiusLG)
@@ -752,6 +765,18 @@ struct CaptureConfirmView: View {
             state: .none,
             tappable: true,
             action: { showLedgerPicker = true }
+        )
+    }
+
+    /// M13+：账单分组行（仅个人账本下显示）
+    private var billGroupRow: some View {
+        fieldRow(
+            label: "账单分组",
+            value: vm.selectedBillGroup?.name ?? "日常消费",
+            icon: "folder",
+            state: .none,
+            tappable: true,
+            action: { showBillGroupPicker = true }
         )
     }
 
